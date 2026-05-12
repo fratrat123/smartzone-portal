@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Register your device{% endblock %}
+{% block content %}
+  <h1>Register this device</h1>
+  <p class="muted">Signed in as <strong>{{ user.email }}</strong>
+     · <a href="{{ url_for('portal.oauth_logout') }}">switch account</a></p>
+
+  <dl class="kv">
+    <dt>Device hostname</dt><dd>{{ hostname or '(not detected)' }}</dd>
+    <dt>MAC address</dt><dd><code>{{ mac_display }}</code></dd>
+  </dl>
+
+  <form method="post">
+    <label>
+      Friendly name (optional — shows up in admin)
+      <input name="friendly_name" maxlength="128" placeholder="e.g. Alice's work iPhone">
+    </label>
+
+    <label>Device type
+      <select name="device_type" id="device_type" required>
+        {% for d in device_types %}
+          <option value="{{ d.key }}" {% if d.key == pre_selected_type %}selected{% endif %}>{{ d.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <details class="instructions">
+      <summary>Optional: disable MAC randomization for this network</summary>
+      <p class="muted">Only needed if you want this device to keep the same approval after a
+        network reset, or to use the same MAC across multiple SSIDs.</p>
+      {% for d in device_types %}
+        <ol class="steps" data-for="{{ d.key }}" hidden>
+          {% for step in d.instructions %}<li>{{ step }}</li>{% endfor %}
+        </ol>
+      {% endfor %}
+    </details>
+
+    <button type="submit" class="button">Submit request</button>
+  </form>
+
+  <script>
+    const sel = document.getElementById('device_type');
+    const lists = document.querySelectorAll('.steps');
+    function show() {
+      lists.forEach(l => l.hidden = (l.dataset.for !== sel.value));
+    }
+    sel.addEventListener('change', show); show();
+  </script>
+{% endblock %}

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Manage admins{% endblock %}
+{% block content %}
+  <header class="row">
+    <h1>Manage admins</h1>
+    <span class="muted">{{ user.email }} ·
+      <a href="{{ url_for('admin.queue') }}">queue</a> ·
+      <a href="{{ url_for('portal.oauth_logout') }}">sign out</a></span>
+  </header>
+
+  {% if error %}
+    <p style="color:#c00">{{ error }}</p>
+  {% endif %}
+
+  <h2>Add admin</h2>
+  <form method="post">
+    <input type="hidden" name="action" value="add">
+    <label>Email
+      <input name="email" type="email" required
+             placeholder="alice{% if domain %}@{{ domain }}{% endif %}"
+             {% if domain %}pattern=".+@{{ domain }}"{% endif %}>
+    </label>
+    <label>Note (optional)
+      <input name="note" maxlength="200" placeholder="e.g. Tech coordinator">
+    </label>
+    <button type="submit" class="button approve">Add admin</button>
+  </form>
+
+  <h2>Bootstrap admins ({{ bootstrap_admins|length }})</h2>
+  <p class="muted">Set in <code>.env</code> via <code>ADMIN_EMAILS</code>. Cannot be removed here.</p>
+  {% if not bootstrap_admins %}
+    <p class="muted">None configured.</p>
+  {% else %}
+    <ul>
+      {% for email in bootstrap_admins %}
+        <li><code>{{ email }}</code></li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  <h2>Added by other admins ({{ db_admins|length }})</h2>
+  {% if not db_admins %}
+    <p class="muted">None yet.</p>
+  {% else %}
+    <table>
+      <thead><tr>
+        <th>Email</th><th>Added by</th><th>When</th><th>Note</th><th></th>
+      </tr></thead>
+      <tbody>
+      {% for a in db_admins %}
+        <tr>
+          <td><code>{{ a.email }}</code></td>
+          <td>{{ a.added_by_email or '—' }}</td>
+          <td>{{ a.added_at.strftime('%Y-%m-%d %H:%M UTC') if a.added_at else '—' }}</td>
+          <td>{{ a.note or '' }}</td>
+          <td>
+            {% if a.email != user.email %}
+              <form method="post" style="display:inline" onsubmit="return confirm('Remove {{ a.email }}?');">
+                <input type="hidden" name="action" value="remove">
+                <input type="hidden" name="email" value="{{ a.email }}">
+                <button type="submit" class="button deny">Remove</button>
+              </form>
+            {% else %}
+              <span class="muted">(you)</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+{% endblock %}

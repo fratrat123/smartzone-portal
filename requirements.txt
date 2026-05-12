@@ -1,0 +1,9 @@
+Flask>=3.0
+Authlib>=1.3
+SQLAlchemy>=2.0
+PyMySQL>=1.1
+cryptography>=42
+pyrad>=2.4
+requests>=2.32
+python-dotenv>=1.0
+gunicorn>=22.0

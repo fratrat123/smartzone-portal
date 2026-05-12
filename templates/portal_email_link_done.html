@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}{{ "Verified" if ok else "Verification failed" }}{% endblock %}
+{% block content %}
+  {% if ok %}
+    <h1>✓ Verified</h1>
+  {% else %}
+    <h1>Couldn't verify</h1>
+  {% endif %}
+  <p>{{ message }}</p>
+  {% if not ok %}
+    <p><a href="{{ url_for('portal.start') }}">Start over</a></p>
+  {% endif %}
+{% endblock %}

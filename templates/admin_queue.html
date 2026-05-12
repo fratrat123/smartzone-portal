@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Pending requests{% endblock %}
+{% block content %}
+  <header class="row">
+    <h1>Device queue <span id="live-indicator" class="muted" style="font-size:0.7em">●</span></h1>
+    <span class="muted">{{ user.email }} ·
+      <a href="{{ url_for('admin.admins') }}">admins</a> ·
+      <a href="{{ url_for('portal.oauth_logout') }}">sign out</a></span>
+  </header>
+
+  <h2>Pending ({{ pending|length }})</h2>
+  {% if not pending %}
+    <p class="muted">Nothing waiting.</p>
+  {% else %}
+    <table>
+      <thead><tr>
+        <th>Requested</th><th>User</th><th>Device</th><th>Hostname</th><th>MAC</th><th>SSID</th><th></th>
+      </tr></thead>
+      <tbody>
+      {% for d in pending %}
+        <tr>
+          <td>{{ d.requested_at.strftime('%Y-%m-%d %H:%M') if d.requested_at else '—' }}</td>
+          <td>{{ d.requested_by_email or '—' }}</td>
+          <td>{{ d.friendly_name or d.device_type_label }}</td>
+          <td>{{ d.hostname }}</td>
+          <td><code>{{ d.mac_display }}</code></td>
+          <td>{{ d.first_seen_ssid or '—' }}</td>
+          <td><a href="{{ url_for('admin.device', mac=d.mac) }}">review</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+  <h2>Recent decisions</h2>
+  <table>
+    <thead><tr>
+      <th>When</th><th>By</th><th>Status</th><th>Expires</th><th>User</th><th>Device</th><th>MAC</th>
+    </tr></thead>
+    <tbody>
+    {% for d in recent %}
+      <tr class="status-{{ d.status }}">
+        <td>{{ d.decided_at.strftime('%Y-%m-%d %H:%M') if d.decided_at else '—' }}</td>
+        <td>{{ d.decided_by_email or '—' }}</td>
+        <td>{{ d.status }}</td>
+        <td>
+          {% if d.status == 'approved' and d.approved_until %}{{ d.approved_until.strftime('%Y-%m-%d %H:%M') }}
+          {% elif d.status == 'approved' %}forever
+          {% else %}—{% endif %}
+        </td>
+        <td>{{ d.requested_by_email or '—' }}</td>
+        <td>{{ d.friendly_name or d.device_type_label }}</td>
+        <td><a href="{{ url_for('admin.device', mac=d.mac) }}"><code>{{ d.mac_display }}</code></a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>
+    Ignored ({{ ignored_count }})
+    {% if ignored_count %}
+      {% if show_ignored %}
+        · <a href="{{ url_for('admin.queue') }}" class="muted">hide</a>
+      {% else %}
+        · <a href="{{ url_for('admin.queue', ignored=1) }}" class="muted">show</a>
+      {% endif %}
+    {% endif %}
+  </h2>
+  {% if show_ignored %}
+    {% if not ignored %}
+      <p class="muted">Nothing ignored.</p>
+    {% else %}
+      <table>
+        <thead><tr>
+          <th>Ignored at</th><th>By</th><th>User</th><th>Device</th><th>MAC</th>
+        </tr></thead>
+        <tbody>
+        {% for d in ignored %}
+          <tr class="status-ignored">
+            <td>{{ d.decided_at.strftime('%Y-%m-%d %H:%M') if d.decided_at else '—' }}</td>
+            <td>{{ d.decided_by_email or '—' }}</td>
+            <td>{{ d.requested_by_email or '—' }}</td>
+            <td>{{ d.friendly_name or d.device_type_label }}</td>
+            <td><a href="{{ url_for('admin.device', mac=d.mac) }}"><code>{{ d.mac_display }}</code></a></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+  {% endif %}
+
+  <script>
+    // Poll a tiny digest endpoint every 5 seconds. If anything changed compared
+    // to what we rendered with, reload the page to get the full updated tables.
+    const baseline = {
+      pending_count: {{ pending|length }},
+      last_decided_at: {{ (recent[0].decided_at.isoformat() if recent and recent[0].decided_at else 'null') | tojson }},
+      last_requested_at: {{ (pending[0].requested_at.isoformat() if pending and pending[0].requested_at else 'null') | tojson }},
+    };
+    const indicator = document.getElementById('live-indicator');
+    let backoff = 5000;
+
+    async function poll() {
+      try {
+        const r = await fetch('{{ url_for("admin.queue_status") }}', { cache: 'no-store' });
+        if (!r.ok) throw new Error('http ' + r.status);
+        const d = await r.json();
+        backoff = 5000;
+        indicator.style.color = 'green';
+        const changed =
+          d.pending_count !== baseline.pending_count ||
+          d.last_decided_at !== baseline.last_decided_at ||
+          d.last_requested_at !== baseline.last_requested_at;
+        if (changed) {
+          location.reload();
+          return;
+        }
+      } catch (e) {
+        indicator.style.color = 'orange';
+        backoff = Math.min(backoff * 2, 30000);
+      }
+      setTimeout(poll, backoff);
+    }
+    setTimeout(poll, backoff);
+  </script>
+{% endblock %}

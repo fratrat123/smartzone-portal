@@ -1,0 +1,18 @@
+# Caddy config for the SmartZone portal.
+# Terminates TLS for portal.hillmanschools.com and reverse-proxies to Flask on :8080.
+# TLS cert is auto-issued from Let's Encrypt via Cloudflare DNS-01 challenge.
+
+portal.hillmanschools.com {
+    tls {
+        dns cloudflare {env.CF_API_TOKEN}
+    }
+
+    # Pass real client IP/proto/host to Flask
+    reverse_proxy localhost:8080 {
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    encode gzip
+}

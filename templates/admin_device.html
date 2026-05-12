@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ d.mac_display }}{% endblock %}
+{% block content %}
+  <p><a href="{{ url_for('admin.queue') }}">← queue</a></p>
+  <h1>{{ d.friendly_name or d.hostname or d.mac_display }}</h1>
+  <p class="status-{{ d.status }}"><strong>Status:</strong> {{ d.status }}</p>
+
+  <dl class="kv">
+    <dt>MAC</dt><dd><code>{{ d.mac_display }}</code></dd>
+    <dt>Hostname</dt><dd>{{ d.hostname }}</dd>
+    <dt>Device type</dt><dd>{{ d.device_type_label }}</dd>
+    <dt>Requested by</dt><dd>{{ d.requested_by_email or '—' }}
+      {% if d.requested_at %} · {{ d.requested_at.strftime('%Y-%m-%d %H:%M UTC') }}{% endif %}</dd>
+    {% if d.decided_at %}
+      <dt>Decided by</dt><dd>{{ d.decided_by_email }} · {{ d.decided_at.strftime('%Y-%m-%d %H:%M UTC') }}</dd>
+    {% endif %}
+    {% if d.approved_until %}
+      <dt>Approved until</dt><dd>{{ d.approved_until.strftime('%Y-%m-%d %H:%M UTC') }}</dd>
+    {% elif d.status == 'approved' %}
+      <dt>Approved until</dt><dd>forever</dd>
+    {% endif %}
+    <dt>First seen SSID</dt><dd>{{ d.first_seen_ssid or '—' }}</dd>
+    <dt>Last seen</dt><dd>{{ d.last_seen_at.strftime('%Y-%m-%d %H:%M UTC') if d.last_seen_at else '—' }}</dd>
+    {% if d.note %}<dt>Note</dt><dd>{{ d.note }}</dd>{% endif %}
+  </dl>
+
+  <form method="post">
+    <label>Note (optional) <textarea name="note" rows="2"></textarea></label>
+    <label>Approve for:
+      <select name="duration">
+        <option value="86400" selected>1 day</option>
+        <option value="604800">7 days</option>
+        <option value="2592000">30 days</option>
+        <option value="0">Forever</option>
+      </select>
+    </label>
+    <div class="row">
+      {% if d.status != 'approved' %}
+        <button name="action" value="approve" class="button approve">Approve</button>
+      {% endif %}
+      {% if d.status != 'denied' %}
+        <button name="action" value="deny" class="button deny">Deny</button>
+      {% endif %}
+      {% if d.status != 'ignored' %}
+        <button name="action" value="ignore" class="button">Ignore</button>
+      {% endif %}
+      {% if d.status != 'pending' %}
+        <button name="action" value="reset" class="button">Reset to pending</button>
+      {% endif %}
+    </div>
+  </form>
+
+  <h2>History</h2>
+  <table>
+    <thead><tr><th>When</th><th>Action</th><th>By</th><th>Details</th></tr></thead>
+    <tbody>
+    {% for h in history %}
+      <tr>
+        <td>{{ h.ts.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+        <td>{{ h.action }}</td>
+        <td>{{ h.actor_email or '' }}</td>
+        <td>{{ h.details or '' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

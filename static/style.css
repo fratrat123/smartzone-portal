@@ -1,0 +1,54 @@
+:root {
+  --fg: #1a1a1a;
+  --muted: #666;
+  --bg: #f5f5f7;
+  --card: #fff;
+  --border: #ddd;
+  --accent: #2563eb;
+  --approve: #16a34a;
+  --deny: #dc2626;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 24px;
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg); color: var(--fg);
+}
+.card {
+  max-width: 960px; margin: 0 auto;
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 28px;
+}
+h1 { margin-top: 0; }
+.muted { color: var(--muted); font-size: 0.9em; }
+code { background: #f0f0f3; padding: 1px 6px; border-radius: 4px; }
+.row { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+
+a { color: var(--accent); }
+.button {
+  display: inline-block; padding: 10px 16px; border-radius: 8px;
+  background: var(--accent); color: white; border: none; cursor: pointer;
+  text-decoration: none; font: inherit;
+}
+.button.approve { background: var(--approve); }
+.button.deny    { background: var(--deny); }
+
+label { display: block; margin: 14px 0; }
+input, select, textarea {
+  width: 100%; padding: 8px 10px; font: inherit;
+  border: 1px solid var(--border); border-radius: 6px; background: white;
+}
+
+dl.kv { display: grid; grid-template-columns: 180px 1fr; gap: 6px 16px; }
+dl.kv dt { color: var(--muted); }
+
+table { width: 100%; border-collapse: collapse; margin: 12px 0 24px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 600; font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.04em; }
+
+.status-approved { color: var(--approve); }
+.status-denied   { color: var(--deny); }
+.status-pending  { color: #b45309; }
+
+details.instructions { margin: 14px 0; padding: 10px 14px; background: #fafafa; border: 1px solid var(--border); border-radius: 8px; }
+.steps { margin: 8px 0 0 18px; }

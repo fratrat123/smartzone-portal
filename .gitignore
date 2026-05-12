@@ -1,0 +1,28 @@
+# Secrets and runtime data — never commit
+.env
+*.db
+*.db-journal
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# Caddy
+caddy.exe
+caddy
+caddy_*
+# Caddy local data dir (certs etc.)
+.caddy/
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+
+# OS junk
+.DS_Store
+Thumbs.db

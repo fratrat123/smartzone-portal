@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Check your email{% endblock %}
+{% block content %}
+  <h1>Check your email</h1>
+  <p>We sent a verification email to <strong>{{ email }}</strong>.</p>
+  <p class="muted">Two ways to verify:</p>
+  <ol class="muted">
+    <li>Open the email and <strong>click the verification link</strong> — this page will continue automatically.</li>
+    <li>Or enter the <strong>6-digit code</strong> from the email below.</li>
+  </ol>
+
+  {% if error %}
+    <p style="color:#c00">{{ error }}</p>
+  {% endif %}
+
+  <form method="post">
+    <label>Code
+      <input name="code" type="text" inputmode="numeric" autocomplete="one-time-code"
+             pattern="[0-9]{6}" maxlength="6" required
+             style="font-family:ui-monospace,Menlo,monospace;font-size:1.3em;letter-spacing:0.3em">
+    </label>
+    <button type="submit" class="button approve">Verify</button>
+  </form>
+
+  <p class="muted" style="margin-top:1.5em">
+    <a href="{{ url_for('portal.start') }}">Use a different email</a>
+  </p>
+
+  <p id="status" class="muted" aria-live="polite">⏳ Waiting for verification…</p>
+
+  <script>
+    // If the user clicks the link in their email (in any browser/tab/device),
+    // this polling picks it up and continues the flow.
+    const statusEl = document.getElementById('status');
+    let backoff = 3000;
+
+    async function poll() {
+      try {
+        const r = await fetch('{{ url_for("portal.email_status") }}', { cache: 'no-store' });
+        if (!r.ok) throw new Error('http ' + r.status);
+        const data = await r.json();
+        backoff = 3000;
+        if (data.status === 'verified') {
+          statusEl.textContent = '✓ Verified — continuing…';
+          setTimeout(() => window.location.href = '{{ url_for("portal.register") }}', 500);
+          return;
+        }
+        if (data.status === 'expired') {
+          statusEl.textContent = '✗ Verification expired. Please start over.';
+          return;
+        }
+        setTimeout(poll, backoff);
+      } catch (e) {
+        backoff = Math.min(backoff * 2, 15000);
+        setTimeout(poll, backoff);
+      }
+    }
+    poll();
+  </script>
+{% endblock %}

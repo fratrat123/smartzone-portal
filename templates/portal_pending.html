@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Request submitted{% endblock %}
+{% block content %}
+  <h1>Request submitted</h1>
+  <p>Your device <code>{{ mac }}</code> is waiting for an admin to approve it.</p>
+  <p class="muted">This page will update automatically when your request is reviewed.
+     Once approved, your device will reconnect within a few seconds.</p>
+  {% if device and device.requested_at %}
+    <p class="muted">Submitted: {{ device.requested_at.strftime('%Y-%m-%d %H:%M UTC') }}</p>
+  {% endif %}
+
+  <p id="status" class="muted" aria-live="polite">⏳ Waiting for approval…</p>
+
+  <script>
+    // Poll the status endpoint every 3 seconds. When status changes from pending,
+    // reload the page so the server renders the appropriate next state.
+    const statusEl = document.getElementById('status');
+    let backoff = 3000;
+
+    async function poll() {
+      try {
+        const r = await fetch('{{ url_for("portal.pending_status") }}', { cache: 'no-store' });
+        if (!r.ok) throw new Error('http ' + r.status);
+        const data = await r.json();
+        backoff = 3000;
+        if (data.status === 'approved') {
+          statusEl.textContent = '✓ Approved! Reconnecting…';
+          setTimeout(() => location.reload(), 800);
+          return;
+        }
+        if (data.status === 'denied') {
+          statusEl.textContent = '✗ Denied by an admin.';
+          return;  // stop polling
+        }
+        // still pending — keep polling
+        setTimeout(poll, backoff);
+      } catch (e) {
+        // Network blip — likely from reassociation. Back off and keep trying.
+        backoff = Math.min(backoff * 2, 15000);
+        setTimeout(poll, backoff);
+      }
+    }
+    poll();
+  </script>
+{% endblock %}

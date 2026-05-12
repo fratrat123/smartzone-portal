@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Already approved{% endblock %}
+{% block content %}
+  <h1>You're already approved</h1>
+  <p>Device <code>{{ mac }}</code> is approved on this network.</p>
+  <p class="muted">If you're seeing this page, your device may not have completed reauthentication yet.
+     Toggle Wi-Fi off and back on, or forget and rejoin the network.</p>
+{% endblock %}

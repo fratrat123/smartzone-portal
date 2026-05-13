@@ -662,23 +662,27 @@ def _finalize(flat: dict[str, str]):
 
         # Kill the gunicorn master so systemd restarts the *whole service*.
         # os._exit only kills this worker — the master would just spawn a
-        # replacement and the new .env wouldn't get picked up by RADIUS/the
-        # cert loader. SIGTERM the parent (gunicorn master); systemd's
-        # Restart=always brings the whole service back, re-reading .env.
+        # replacement and the new .env wouldn't get picked up. SIGTERM the
+        # parent (gunicorn master); systemd's Restart=always brings the whole
+        # service back, re-reading .env.
+        #
+        # Detection: systemd sets INVOCATION_ID in the service environment,
+        # which is inherited by all descendants. If we have it, we're under a
+        # systemd service and our parent is the gunicorn master. That's more
+        # reliable than checking /proc/<ppid>/comm, which can be 'python3'
+        # (when ExecStart=python3 -m gunicorn) or 'gunicorn' depending on
+        # how the unit was written.
         ppid = os.getppid()
-        try:
-            with open(f"/proc/{ppid}/comm", "r") as f:
-                parent_comm = f.read().strip()
-        except OSError:
-            parent_comm = ""
-        if "gunicorn" in parent_comm:
-            log.warning("wizard: signaling gunicorn master pid=%s to shut down", ppid)
+        if os.environ.get("INVOCATION_ID"):
+            log.warning("wizard: signaling parent pid=%s (gunicorn master) to shut down", ppid)
             try:
                 os.kill(ppid, signal.SIGTERM)
-            except OSError:
-                pass
+            except OSError as e:
+                log.warning("wizard: SIGTERM to parent failed: %s", e)
             # Give the master a moment to broadcast SIGTERM to siblings.
             time.sleep(2)
+        else:
+            log.warning("wizard: not under systemd (no INVOCATION_ID) — just exiting worker")
         # Final fallback: kill this worker so we never linger if the master
         # didn't notice us. (In dev / `python app.py` mode, parent is the
         # shell and we just do os._exit cleanly.)

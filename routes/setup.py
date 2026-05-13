@@ -439,20 +439,30 @@ def review():
 
 
 def _flatten_state(state: dict) -> dict[str, str]:
-    """Collapse {step_key: {ENV: val, ...}, ...} into a flat {ENV: val} dict.
-    Strips out keys that don't belong in .env: TLS-step credentials (consumed
-    by _issue_tls_cert), and NET_ values (consumed by _apply_network)."""
+    """Collapse {step_key: {ENV: val, ...}, ...} into a flat dict for the
+    review page to display. Includes everything the wizard collected so the
+    operator can verify their input."""
     flat: dict[str, str] = {}
-    transient = {
-        "CLOUDFLARE_API_TOKEN", "TLS_HOSTNAME", "TLS_EMAIL",
-        "NET_IP_CIDR", "NET_GATEWAY", "NET_DNS", "NET_HOSTNAME",
-    }
     for step_data in state.values():
         for k, v in step_data.items():
-            if v is None or k in transient:
+            if v is None:
                 continue
             flat[k] = str(v)
     return flat
+
+
+# Values that the wizard collects but does NOT write to .env. They drive
+# side-effects at finalize time (cert issuance, network change) and don't
+# need to persist as portal config.
+_TRANSIENT_KEYS = {
+    "CLOUDFLARE_API_TOKEN", "TLS_HOSTNAME", "TLS_EMAIL",
+    "NET_IP_CIDR", "NET_GATEWAY", "NET_DNS", "NET_HOSTNAME",
+}
+
+
+def _env_subset(flat: dict[str, str]) -> dict[str, str]:
+    """Filter flat down to just what should land in .env."""
+    return {k: v for k, v in flat.items() if k not in _TRANSIENT_KEYS}
 
 
 def _apply_network(state: dict) -> tuple[bool, str]:
@@ -612,20 +622,21 @@ def _finalize(flat: dict[str, str]):
     Order matters:
       1. Issue TLS cert (still on the setup IP, but only if internet works
          from it — best-effort).
-      2. Write .env.
+      2. Write .env (only the non-transient subset).
       3. Render the finished page so the browser receives it BEFORE we change
          the network and lose the connection.
       4. After the response goes out: apply netplan (browser dies), exit so
          systemd restarts the portal in normal mode at the new IP.
     """
-    flat.setdefault("FLASK_SECRET_KEY", secrets.token_urlsafe(48))
-    flat["SETUP_COMPLETE"] = "true"
+    env = _env_subset(flat)
+    env.setdefault("FLASK_SECRET_KEY", secrets.token_urlsafe(48))
+    env["SETUP_COMPLETE"] = "true"
 
     cert_ok, cert_msg, cert_env = _issue_tls_cert(_wizard_state())
-    flat.update(cert_env)
+    env.update(cert_env)
 
     try:
-        path = write_env(flat)
+        path = write_env(env)
     except Exception as e:
         return _render("review", "setup_review.html", flat=flat,
                        error=f"Failed to write .env: {e}"), 500

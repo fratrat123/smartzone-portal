@@ -1,13 +1,15 @@
 """Admin routes — approve/deny pending devices, browse history."""
 from datetime import datetime, timedelta, timezone
+
 from functools import wraps
 
 from flask import Blueprint, abort, redirect, render_template, request, url_for
 from sqlalchemy import func, select
 
+from action_tokens import TokenError, parse_token
 from coa import disconnect as coa_disconnect
 from config import config
-from db import Admin, AuditLog, Device, SessionLocal, audit
+from db import Admin, AuditLog, Device, DeviceSsidSeen, SessionLocal, audit
 from device_types import DEVICE_TYPES_BY_KEY
 from macfmt import display_colon
 from oauth import current_user, is_admin, is_bootstrap_admin
@@ -32,30 +34,123 @@ def admin_required(view):
 @admin_required
 def queue():
     show_ignored = request.args.get("ignored") == "1"
+    ssid_filter = (request.args.get("ssid") or "").strip() or None
+    now = datetime.now(timezone.utc)
+    seven_days_ago = now - timedelta(days=7)
+
+    def _apply_ssid(q):
+        if not ssid_filter:
+            return q
+        # Match either last_seen_ssid OR any historical association in
+        # device_ssid_seen. A device that hit SSID-A then SSID-B should still
+        # appear under the SSID-A filter.
+        sub = select(DeviceSsidSeen.mac).where(DeviceSsidSeen.ssid == ssid_filter)
+        return q.where((Device.last_seen_ssid == ssid_filter) | (Device.mac.in_(sub)))
+
     with SessionLocal() as s:
         pending = s.scalars(
-            select(Device).where(Device.status == "pending").order_by(Device.requested_at.desc().nullslast())
+            _apply_ssid(select(Device).where(Device.status == "pending"))
+            .order_by(Device.requested_at.desc().nullslast())
         ).all()
         recent = s.scalars(
-            select(Device).where(Device.status.in_(("approved", "denied", "expired")))
+            _apply_ssid(select(Device).where(Device.status.in_(("approved", "denied", "expired"))))
             .order_by(Device.decided_at.desc().nullslast()).limit(50)
         ).all()
         ignored = []
         if show_ignored:
             ignored = s.scalars(
-                select(Device).where(Device.status == "ignored")
+                _apply_ssid(select(Device).where(Device.status == "ignored"))
                 .order_by(Device.decided_at.desc().nullslast()).limit(100)
             ).all()
         ignored_count = s.scalar(
             select(func.count()).select_from(Device).where(Device.status == "ignored")
         ) or 0
+        known_ssids = [r[0] for r in s.execute(
+            select(DeviceSsidSeen.ssid).distinct().order_by(DeviceSsidSeen.ssid)
+        ).all() if r[0]]
+        # Per-MAC SSID list for the rows we're rendering — one query, then
+        # group in Python, so the template can show a tooltip when a device
+        # has been on more than one WLAN.
+        macs_on_page = {d.mac for d in (*pending, *recent, *ignored)}
+        ssids_by_mac: dict[str, list[str]] = {}
+        if macs_on_page:
+            for mac, ssid in s.execute(
+                select(DeviceSsidSeen.mac, DeviceSsidSeen.ssid)
+                .where(DeviceSsidSeen.mac.in_(macs_on_page))
+                .order_by(DeviceSsidSeen.last_seen_at.desc())
+            ).all():
+                ssids_by_mac.setdefault(mac, []).append(ssid)
+
+        # ---- Stats (lightweight; same query path the queue already touches) ----
+        counts = {}
+        for status, cnt in s.execute(
+            select(Device.status, func.count()).group_by(Device.status)
+        ).all():
+            counts[status] = int(cnt)
+
+        approved_now = counts.get("approved", 0)
+        pending_count = counts.get("pending", 0)
+
+        # Approvals expiring in the next 24h
+        expiring_soon = s.scalar(
+            select(func.count()).select_from(Device).where(
+                Device.status == "approved",
+                Device.approved_until.is_not(None),
+                Device.approved_until < (now + timedelta(hours=24)),
+            )
+        ) or 0
+
+        # New requests / approvals over the last 7 days, bucketed by day
+        new_per_day = {}
+        approved_per_day = {}
+        for row in s.execute(
+            select(Device.requested_at).where(Device.requested_at >= seven_days_ago)
+        ).all():
+            d = row[0].date() if row[0] else None
+            if d:
+                new_per_day[d] = new_per_day.get(d, 0) + 1
+        for row in s.execute(
+            select(Device.decided_at).where(
+                Device.status == "approved",
+                Device.decided_at >= seven_days_ago,
+            )
+        ).all():
+            d = row[0].date() if row[0] else None
+            if d:
+                approved_per_day[d] = approved_per_day.get(d, 0) + 1
+
+    # Build a 7-day series for the chart
+    series = []
+    for i in range(6, -1, -1):
+        day = (now - timedelta(days=i)).date()
+        series.append({
+            "label": day.strftime("%a"),
+            "date": day.isoformat(),
+            "new": new_per_day.get(day, 0),
+            "approved": approved_per_day.get(day, 0),
+        })
+    series_max = max((max(s["new"], s["approved"]) for s in series), default=1) or 1
+
+    stats = {
+        "pending": pending_count,
+        "approved": approved_now,
+        "expiring_soon": int(expiring_soon),
+        "denied": counts.get("denied", 0) + counts.get("expired", 0),
+        "ignored": counts.get("ignored", 0),
+        "series": series,
+        "series_max": series_max,
+    }
+
     return render_template(
         "admin_queue.html",
-        pending=[_view(d) for d in pending],
-        recent=[_view(d) for d in recent],
-        ignored=[_view(d) for d in ignored],
+        pending=[_view(d, ssids_by_mac.get(d.mac)) for d in pending],
+        recent=[_view(d, ssids_by_mac.get(d.mac)) for d in recent],
+        ignored=[_view(d, ssids_by_mac.get(d.mac)) for d in ignored],
         ignored_count=int(ignored_count),
         show_ignored=show_ignored,
+        stats=stats,
+        known_ssids=known_ssids,
+        ssid_filter=ssid_filter,
         user=current_user(),
     )
 
@@ -163,8 +258,129 @@ def device(mac):
         history = s.scalars(
             select(AuditLog).where(AuditLog.mac == mac).order_by(AuditLog.ts.desc()).limit(50)
         ).all()
+        ssid_rows = s.scalars(
+            select(DeviceSsidSeen).where(DeviceSsidSeen.mac == mac)
+            .order_by(DeviceSsidSeen.last_seen_at.desc())
+        ).all()
+        ssids_seen_view = [
+            {
+                "ssid": r.ssid,
+                "first_seen_at": r.first_seen_at,
+                "last_seen_at": r.last_seen_at,
+                "hit_count": r.hit_count,
+            }
+            for r in ssid_rows
+        ]
 
-    return render_template("admin_device.html", d=_view(dev), history=history)
+    return render_template(
+        "admin_device.html",
+        d=_view(dev, [r["ssid"] for r in ssids_seen_view]),
+        history=history,
+        ssids_seen=ssids_seen_view,
+    )
+
+
+@bp.route("/bulk", methods=["POST"])
+@admin_required
+def bulk():
+    """Apply one action to multiple selected MACs from the queue."""
+    action = request.form.get("bulk_action")
+    macs = request.form.getlist("mac")
+    if not macs or action not in ("approve", "deny", "ignore"):
+        return redirect(url_for("admin.queue"))
+
+    actor = current_user()["email"]
+    now = datetime.now(timezone.utc)
+    try:
+        duration = int(request.form.get("duration", "86400"))
+    except ValueError:
+        duration = 86400
+
+    ap_macs_for_kick: list[tuple[str, str | None]] = []
+    with SessionLocal() as s:
+        for mac in macs:
+            dev = s.get(Device, mac)
+            if not dev:
+                continue
+            if action == "approve":
+                dev.status = "approved"
+                dev.decided_by_email = actor
+                dev.decided_at = now
+                dev.approved_until = (now + timedelta(seconds=duration)) if duration > 0 else None
+            elif action == "deny":
+                dev.status = "denied"
+                dev.decided_by_email = actor
+                dev.decided_at = now
+                dev.approved_until = None
+            elif action == "ignore":
+                dev.status = "ignored"
+                dev.decided_by_email = actor
+                dev.decided_at = now
+                dev.approved_until = None
+            audit(s, action, mac=mac, actor=actor, details="bulk")
+            ap_macs_for_kick.append((mac, dev.first_seen_ap_mac))
+        s.commit()
+
+    # Fire CoA kicks outside the DB session (network calls).
+    for mac, ap_mac in ap_macs_for_kick:
+        try:
+            ok = sz_client.disconnect_client(mac, ap_mac)
+            if not ok:
+                coa_disconnect(mac)
+        except Exception:
+            pass
+
+    return redirect(url_for("admin.queue"))
+
+
+@bp.route("/audit")
+@admin_required
+def audit_view():
+    action = (request.args.get("action") or "").strip()
+    mac_q = (request.args.get("mac") or "").strip().lower().replace(":", "").replace("-", "")
+    actor_q = (request.args.get("actor") or "").strip().lower()
+    try:
+        page = max(1, int(request.args.get("page", "1")))
+    except ValueError:
+        page = 1
+    per_page = 50
+
+    with SessionLocal() as s:
+        q = select(AuditLog)
+        if action:
+            q = q.where(AuditLog.action == action)
+        if mac_q:
+            q = q.where(AuditLog.mac == mac_q)
+        if actor_q:
+            q = q.where(AuditLog.actor_email.ilike(f"%{actor_q}%"))
+        q = q.order_by(AuditLog.ts.desc())
+        total = s.scalar(select(func.count()).select_from(q.subquery())) or 0
+        rows = s.scalars(q.limit(per_page).offset((page - 1) * per_page)).all()
+        # Distinct action types for the filter dropdown
+        actions = [r[0] for r in s.execute(
+            select(AuditLog.action).distinct().order_by(AuditLog.action)
+        ).all()]
+        view_rows = [{
+            "ts": r.ts,
+            "action": r.action,
+            "actor_email": r.actor_email,
+            "mac": r.mac,
+            "mac_display": display_colon(r.mac) if r.mac else "",
+            "details": r.details,
+        } for r in rows]
+
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    return render_template(
+        "admin_audit.html",
+        rows=view_rows,
+        actions=actions,
+        action=action,
+        mac=request.args.get("mac", ""),
+        actor=actor_q,
+        page=page,
+        total_pages=total_pages,
+        total=total,
+    )
 
 
 @bp.route("/admins", methods=["GET", "POST"])
@@ -241,7 +457,91 @@ def admins():
     )
 
 
-def _view(dev: Device) -> dict:
+@bp.route("/link/<token>", methods=["GET", "POST"])
+def link_action(token: str):
+    """Magic-link approve/deny from a notification email.
+
+    Auth is the signed token itself (recipient + mac + action are baked in and
+    HMAC'd). GET renders a confirm page; POST executes. The POST split exists
+    so email prefetchers (Outlook ATP / link scanners) following GETs can't
+    auto-trigger decisions.
+    """
+    try:
+        mac, recipient_email, action = parse_token(token)
+    except TokenError as e:
+        return render_template("admin_link_error.html", error=str(e)), 400
+
+    # Recipient must still be an admin at click time. Reuse is_admin() with a
+    # synthetic user dict so removed admins lose link access immediately.
+    if not is_admin({"email": recipient_email}):
+        return render_template("admin_link_error.html",
+            error=f"{recipient_email} is no longer authorized to make this decision."), 403
+
+    with SessionLocal() as s:
+        dev = s.get(Device, mac)
+        if not dev:
+            return render_template("admin_link_error.html",
+                error="That device is no longer on file."), 404
+
+        if dev.status != "pending":
+            return render_template(
+                "admin_link_done.html",
+                d=_view(dev),
+                already=True,
+                action_taken=action,
+            )
+
+        if request.method == "GET":
+            return render_template(
+                "admin_link_confirm.html",
+                d=_view(dev),
+                action=action,
+                recipient_email=recipient_email,
+                token=token,
+            )
+
+        # POST: do it.
+        now = datetime.now(timezone.utc)
+        if action == "approve":
+            try:
+                duration = int(request.form.get("duration", "86400"))
+            except ValueError:
+                duration = 86400
+            dev.status = "approved"
+            dev.approved_until = (now + timedelta(seconds=duration)) if duration > 0 else None
+        elif action == "deny":
+            dev.status = "denied"
+            dev.approved_until = None
+        else:
+            abort(400)
+        dev.decided_by_email = recipient_email
+        dev.decided_at = now
+        audit_details = "via=magic_link"
+        if action == "approve" and dev.approved_until:
+            audit_details = f"until={dev.approved_until.isoformat()} {audit_details}"
+        audit(s, action, mac=mac, actor=recipient_email, details=audit_details)
+        s.commit()
+
+        ap_mac = dev.first_seen_ap_mac
+        kicked = sz_client.disconnect_client(mac, ap_mac)
+        method = "sz_api"
+        if not kicked:
+            kicked = coa_disconnect(mac)
+            method = "coa_radius"
+        with SessionLocal() as s2:
+            audit(s2, "kick_sent", mac=mac, actor=recipient_email,
+                  details=f"method={method} ok={kicked} ap_mac={ap_mac} via=magic_link")
+            s2.commit()
+
+        return render_template(
+            "admin_link_done.html",
+            d=_view(dev),
+            already=False,
+            action_taken=action,
+        )
+
+
+def _view(dev: Device, ssids_seen: list[str] | None = None) -> dict:
     return {
         "mac": dev.mac,
         "mac_display": display_colon(dev.mac),
@@ -255,6 +555,8 @@ def _view(dev: Device) -> dict:
         "decided_at": dev.decided_at,
         "approved_until": dev.approved_until,
         "first_seen_ssid": dev.first_seen_ssid,
+        "last_seen_ssid": dev.last_seen_ssid or dev.first_seen_ssid,
+        "ssids_seen": ssids_seen or [],
         "last_seen_at": dev.last_seen_at,
         "note": dev.note,
     }

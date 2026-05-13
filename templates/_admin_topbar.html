@@ -1,0 +1,16 @@
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">H</span>
+    Hillman Wi-Fi
+  </div>
+  <nav>
+    <a href="{{ url_for('admin.queue') }}" class="{{ 'active' if active == 'queue' else '' }}">Queue</a>
+    <a href="{{ url_for('admin.audit_view') }}" class="{{ 'active' if active == 'audit' else '' }}">Audit log</a>
+    <a href="{{ url_for('admin.admins') }}" class="{{ 'active' if active == 'admins' else '' }}">Admins</a>
+  </nav>
+  <div class="user">
+    <div class="avatar">{{ (user.email[:2]|upper) if user else '' }}</div>
+    <span>{{ user.email if user else '' }}</span>
+    <a href="{{ url_for('portal.oauth_logout') }}" class="muted" style="margin-left:8px">Sign out</a>
+  </div>
+</header>

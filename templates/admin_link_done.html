@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ d.friendly_name or d.mac_display }} · {{ d.status|capitalize }}{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:560px;margin:40px auto">
+  <div class="card-header">
+    <h2>
+      {% if already %}
+        Already decided
+      {% elif action_taken == 'approve' %}
+        Approved
+      {% else %}
+        Denied
+      {% endif %}
+    </h2>
+    <span class="pill pill-{{ d.status }}">{{ d.status|capitalize }}</span>
+  </div>
+  <div class="card-body">
+    {% if already %}
+      <p>This device's status is already <strong>{{ d.status }}</strong>
+      {% if d.decided_by_email %} (set by {{ d.decided_by_email }}){% endif %}.
+      The magic link has no effect.</p>
+    {% else %}
+      <p>{{ d.friendly_name or d.hostname or d.mac_display }}
+      is now <strong>{{ d.status }}</strong>
+      {% if d.approved_until %}until {{ d.approved_until.strftime('%Y-%m-%d %H:%M UTC') }}{% endif %}.
+      The client has been kicked so the new status takes effect on reassociation.</p>
+    {% endif %}
+
+    <dl class="kv" style="margin-top:12px">
+      <dt>MAC</dt><dd><code>{{ d.mac_display }}</code></dd>
+      <dt>Requested by</dt><dd>{{ d.requested_by_email or '(no portal sign-in)' }}</dd>
+      <dt>SSID</dt><dd>{{ d.last_seen_ssid or d.first_seen_ssid or '—' }}</dd>
+    </dl>
+
+    <p style="margin-top:16px">
+      <a href="{{ url_for('admin.device', mac=d.mac) }}" class="btn">Open device page</a>
+      <a href="{{ url_for('admin.queue') }}" class="btn">Back to queue</a>
+    </p>
+  </div>
+</div>
+{% endblock %}

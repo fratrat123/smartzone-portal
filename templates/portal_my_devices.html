@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}My devices{% endblock %}
+{% block layout %}
+<div class="page" style="max-width:760px">
+  <div class="page-header">
+    <div>
+      <h1>My devices</h1>
+      <p class="subtitle">Signed in as <strong>{{ user.email }}</strong>
+         · <a href="{{ url_for('portal.oauth_logout') }}">sign out</a></p>
+    </div>
+  </div>
+
+  {% if not devices %}
+    <div class="card">
+      <div class="card-body">
+        <div class="empty">
+          <div class="empty-icon">·</div>
+          <div>You haven't registered any devices yet.</div>
+        </div>
+      </div>
+    </div>
+  {% else %}
+    {% for d in devices %}
+      <div class="card">
+        <div class="card-body">
+          <div class="row spread" style="margin-bottom:14px">
+            <div>
+              <h2 style="margin:0 0 4px;font-size:1.05em">{{ d.friendly_name or d.hostname or d.mac_display }}</h2>
+              <p class="muted" style="margin:0;font-size:0.9em">{{ d.device_type }} · <code>{{ d.mac_display }}</code></p>
+            </div>
+            <span class="pill pill-{{ d.status }}">{{ d.status|capitalize }}</span>
+          </div>
+
+          <dl class="kv" style="font-size:0.92em">
+            {% if d.requested_at %}
+              <dt>Requested</dt><dd>{{ d.requested_at.strftime('%Y-%m-%d %H:%M UTC') }}</dd>
+            {% endif %}
+            {% if d.status == 'approved' %}
+              <dt>Expires</dt>
+              <dd>{% if d.approved_until %}{{ d.approved_until.strftime('%Y-%m-%d %H:%M UTC') }}{% else %}Never{% endif %}</dd>
+            {% endif %}
+            {% if d.last_seen_at %}
+              <dt>Last connected</dt><dd>{{ d.last_seen_at.strftime('%Y-%m-%d %H:%M UTC') }}</dd>
+            {% endif %}
+          </dl>
+
+          {% if d.status != 'denied' %}
+            <form method="post" action="{{ url_for('portal.my_devices_remove', mac=d.mac) }}"
+                  onsubmit="return confirm('Remove {{ d.friendly_name or d.mac_display }} from your Wi-Fi?');"
+                  style="margin-top:14px">
+              <button type="submit" class="btn btn-sm btn-danger">Remove</button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+    {% endfor %}
+  {% endif %}
+</div>
+{% endblock %}

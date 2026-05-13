@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Signed out{% endblock %}
+{% block content %}
+  <div style="text-align:center;margin-bottom:24px">
+    <div style="display:inline-grid;place-items:center;width:64px;height:64px;border-radius:50%;background:var(--surface-muted);color:var(--text-muted);font-size:1.8em;margin-bottom:12px">👋</div>
+    <h1 style="font-size:1.4em;margin:0 0 6px;font-weight:650">Signed out</h1>
+    <p class="muted" style="margin:0">You've been signed out of the admin console.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-body" style="text-align:center">
+      <a class="btn btn-primary" href="{{ url_for('admin.queue') }}">Sign back in</a>
+    </div>
+  </div>
+{% endblock %}

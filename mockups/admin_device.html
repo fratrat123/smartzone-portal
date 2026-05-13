@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Hillman Wi-Fi · Review device</title>
+  <link rel="stylesheet" href="mockup-styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">H</span>
+      Hillman Wi-Fi
+    </div>
+    <nav>
+      <a href="admin_queue.html" class="active">Queue</a>
+      <a href="#">Devices</a>
+      <a href="#">Admins</a>
+      <a href="#">Audit log</a>
+    </nav>
+    <div class="user">
+      <div class="avatar">PM</div>
+      <span>probertm@hillmanschools.com</span>
+    </div>
+  </header>
+
+  <div class="page" style="max-width:760px">
+    <p style="margin-bottom:16px"><a href="admin_queue.html" class="muted">← Back to queue</a></p>
+
+    <div class="page-header">
+      <div>
+        <h1>Alice's iPhone</h1>
+        <p class="subtitle">Submitted 11 minutes ago by <strong>aroberts@hillmanschools.com</strong></p>
+      </div>
+      <span class="pill pill-pending" style="font-size:0.9em;padding:6px 12px">Pending</span>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2>Device details</h2>
+      </div>
+      <div class="card-body">
+        <dl class="kv">
+          <dt>MAC</dt>           <dd><code>aa:bb:cc:dd:ee:ff</code></dd>
+          <dt>Hostname</dt>      <dd>Alices-iPhone</dd>
+          <dt>Device type</dt>   <dd>iPhone or iPad</dd>
+          <dt>Last seen</dt>     <dd>4 minutes ago on <code>SZ100HS</code></dd>
+          <dt>First seen AP</dt> <dd><code>84:23:88:32:18:00</code></dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2>Decision</h2>
+      </div>
+      <div class="card-body">
+        <form>
+          <label class="field">Approve for
+            <select>
+              <option selected>1 day</option>
+              <option>7 days</option>
+              <option>30 days</option>
+              <option>Forever</option>
+            </select>
+          </label>
+
+          <label class="field">Note <span class="hint">(optional, visible to other admins)</span>
+            <textarea rows="2" placeholder="e.g. Confirmed in person"></textarea>
+          </label>
+
+          <div class="row" style="margin-top:8px;flex-wrap:wrap">
+            <button class="btn btn-success">Approve</button>
+            <button class="btn btn-danger">Deny</button>
+            <button class="btn">Ignore</button>
+            <button class="btn" style="margin-left:auto;color:var(--text-muted)">Reset to pending</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2>History</h2>
+      </div>
+      <div class="card-body compact">
+        <table class="data-list">
+          <thead>
+            <tr><th>When</th><th>Action</th><th>By</th><th>Details</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>11 min ago</td><td>request</td><td>aroberts@</td><td>type=ios name=Alice's iPhone</td></tr>
+            <tr><td>11 min ago</td><td>radius_reject</td><td>—</td><td>new pending; ssid=SZ100HS</td></tr>
+            <tr><td>12 min ago</td><td>radius_reject</td><td>—</td><td>new pending; ssid=SZ100HS</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

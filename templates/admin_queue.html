@@ -1,126 +1,294 @@
 {% extends "base.html" %}
-{% block title %}Pending requests{% endblock %}
-{% block content %}
-  <header class="row">
-    <h1>Device queue <span id="live-indicator" class="muted" style="font-size:0.7em">●</span></h1>
-    <span class="muted">{{ user.email }} ·
-      <a href="{{ url_for('admin.admins') }}">admins</a> ·
-      <a href="{{ url_for('portal.oauth_logout') }}">sign out</a></span>
-  </header>
+{% block title %}Device queue{% endblock %}
 
-  <h2>Pending ({{ pending|length }})</h2>
-  {% if not pending %}
-    <p class="muted">Nothing waiting.</p>
-  {% else %}
-    <table>
-      <thead><tr>
-        <th>Requested</th><th>User</th><th>Device</th><th>Hostname</th><th>MAC</th><th>SSID</th><th></th>
-      </tr></thead>
-      <tbody>
-      {% for d in pending %}
-        <tr>
-          <td>{{ d.requested_at.strftime('%Y-%m-%d %H:%M') if d.requested_at else '—' }}</td>
-          <td>{{ d.requested_by_email or '—' }}</td>
-          <td>{{ d.friendly_name or d.device_type_label }}</td>
-          <td>{{ d.hostname }}</td>
-          <td><code>{{ d.mac_display }}</code></td>
-          <td>{{ d.first_seen_ssid or '—' }}</td>
-          <td><a href="{{ url_for('admin.device', mac=d.mac) }}">review</a></td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  {% endif %}
+{% block topbar %}
+  {% with active='queue' %}{% include '_admin_topbar.html' %}{% endwith %}
+{% endblock %}
 
-  <h2>Recent decisions</h2>
-  <table>
-    <thead><tr>
-      <th>When</th><th>By</th><th>Status</th><th>Expires</th><th>User</th><th>Device</th><th>MAC</th>
-    </tr></thead>
-    <tbody>
-    {% for d in recent %}
-      <tr class="status-{{ d.status }}">
-        <td>{{ d.decided_at.strftime('%Y-%m-%d %H:%M') if d.decided_at else '—' }}</td>
-        <td>{{ d.decided_by_email or '—' }}</td>
-        <td>{{ d.status }}</td>
-        <td>
-          {% if d.status == 'approved' and d.approved_until %}{{ d.approved_until.strftime('%Y-%m-%d %H:%M') }}
-          {% elif d.status == 'approved' %}forever
-          {% else %}—{% endif %}
-        </td>
-        <td>{{ d.requested_by_email or '—' }}</td>
-        <td>{{ d.friendly_name or d.device_type_label }}</td>
-        <td><a href="{{ url_for('admin.device', mac=d.mac) }}"><code>{{ d.mac_display }}</code></a></td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-
-  <h2>
-    Ignored ({{ ignored_count }})
-    {% if ignored_count %}
-      {% if show_ignored %}
-        · <a href="{{ url_for('admin.queue') }}" class="muted">hide</a>
-      {% else %}
-        · <a href="{{ url_for('admin.queue', ignored=1) }}" class="muted">show</a>
-      {% endif %}
+{% block layout %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1>Device queue <span class="live-dot" id="live-indicator" title="Live updating"></span></h1>
+      <p class="subtitle">Approve, deny, or ignore device access requests.</p>
+    </div>
+    {% if known_ssids %}
+      <form method="get" style="display:flex;align-items:center;gap:6px">
+        <label class="muted" style="margin:0">SSID</label>
+        <select name="ssid" onchange="this.form.submit()" style="margin-top:0;width:auto">
+          <option value="">All ({{ known_ssids|length }})</option>
+          {% for s in known_ssids %}
+            <option value="{{ s }}" {% if s == ssid_filter %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+        {% if show_ignored %}<input type="hidden" name="ignored" value="1">{% endif %}
+        {% if ssid_filter %}<a href="{{ url_for('admin.queue', ignored=1 if show_ignored else None) }}" class="muted" style="margin-left:4px">clear</a>{% endif %}
+      </form>
     {% endif %}
-  </h2>
-  {% if show_ignored %}
-    {% if not ignored %}
-      <p class="muted">Nothing ignored.</p>
-    {% else %}
-      <table>
-        <thead><tr>
-          <th>Ignored at</th><th>By</th><th>User</th><th>Device</th><th>MAC</th>
-        </tr></thead>
-        <tbody>
-        {% for d in ignored %}
-          <tr class="status-ignored">
-            <td>{{ d.decided_at.strftime('%Y-%m-%d %H:%M') if d.decided_at else '—' }}</td>
-            <td>{{ d.decided_by_email or '—' }}</td>
-            <td>{{ d.requested_by_email or '—' }}</td>
-            <td>{{ d.friendly_name or d.device_type_label }}</td>
-            <td><a href="{{ url_for('admin.device', mac=d.mac) }}"><code>{{ d.mac_display }}</code></a></td>
-          </tr>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px">
+    <div class="card" style="margin-bottom:0">
+      <div class="card-body" style="padding:14px 18px">
+        <div class="muted" style="font-size:0.82em;text-transform:uppercase;letter-spacing:0.04em">Pending</div>
+        <div style="font-size:1.8em;font-weight:650;color:{{ 'var(--warning)' if stats.pending else 'var(--text)' }}">{{ stats.pending }}</div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:0">
+      <div class="card-body" style="padding:14px 18px">
+        <div class="muted" style="font-size:0.82em;text-transform:uppercase;letter-spacing:0.04em">Approved</div>
+        <div style="font-size:1.8em;font-weight:650;color:var(--success)">{{ stats.approved }}</div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:0">
+      <div class="card-body" style="padding:14px 18px">
+        <div class="muted" style="font-size:0.82em;text-transform:uppercase;letter-spacing:0.04em">Expiring &lt; 24h</div>
+        <div style="font-size:1.8em;font-weight:650;color:{{ 'var(--warning)' if stats.expiring_soon else 'var(--text-muted)' }}">{{ stats.expiring_soon }}</div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:0">
+      <div class="card-body" style="padding:14px 18px">
+        <div class="muted" style="font-size:0.82em;text-transform:uppercase;letter-spacing:0.04em">Denied / expired</div>
+        <div style="font-size:1.8em;font-weight:650;color:var(--text-muted)">{{ stats.denied }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2>Last 7 days</h2>
+      <span class="meta">
+        <span style="display:inline-block;width:10px;height:10px;background:var(--brand-primary);border-radius:2px;vertical-align:middle"></span> Requests
+        &nbsp;
+        <span style="display:inline-block;width:10px;height:10px;background:var(--success);border-radius:2px;vertical-align:middle"></span> Approvals
+      </span>
+    </div>
+    <div class="card-body">
+      <div style="display:grid;grid-template-columns:repeat({{ stats.series|length }},1fr);gap:14px;align-items:end;height:120px">
+        {% for d in stats.series %}
+          <div style="display:flex;flex-direction:column;align-items:center;height:100%;justify-content:flex-end">
+            <div style="display:flex;align-items:flex-end;gap:4px;height:100%">
+              <div title="{{ d.new }} requests" style="width:14px;background:var(--brand-primary);border-radius:3px 3px 0 0;height:{{ (d.new / stats.series_max * 100)|round(0, 'floor') }}%;min-height:{{ 2 if d.new else 0 }}px"></div>
+              <div title="{{ d.approved }} approvals" style="width:14px;background:var(--success);border-radius:3px 3px 0 0;height:{{ (d.approved / stats.series_max * 100)|round(0, 'floor') }}%;min-height:{{ 2 if d.approved else 0 }}px"></div>
+            </div>
+            <div class="muted" style="font-size:0.78em;margin-top:6px">{{ d.label }}</div>
+          </div>
         {% endfor %}
-        </tbody>
-      </table>
-    {% endif %}
-  {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <form method="post" action="{{ url_for('admin.bulk') }}" id="bulk-form">
+  <div class="card">
+    <div class="card-header">
+      <h2>Pending <span class="pill pill-pending">{{ pending|length }}</span></h2>
+      <span class="meta">Sorted by newest first</span>
+    </div>
+    <div class="card-body compact">
+      {% if not pending %}
+        <div class="empty">
+          <div class="empty-icon">✓</div>
+          <div>Nothing waiting.</div>
+        </div>
+      {% else %}
+        <table class="data-list">
+          <thead>
+            <tr>
+              <th style="width:36px"><input type="checkbox" id="select-all" title="Select all"></th>
+              <th>Requested</th>
+              <th>User</th>
+              <th>Device</th>
+              <th>Hostname</th>
+              <th>MAC</th>
+              <th>SSID</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for d in pending %}
+            <tr>
+              <td><input type="checkbox" name="mac" value="{{ d.mac }}" class="row-check"></td>
+              <td>{{ d.requested_at.strftime('%Y-%m-%d %H:%M') if d.requested_at else '—' }}</td>
+              <td>{{ d.requested_by_email or '—' }}</td>
+              <td>{{ d.friendly_name or d.device_type_label }}</td>
+              <td>{{ d.hostname }}</td>
+              <td><code class="muted">{{ d.mac_display }}</code></td>
+              <td>
+                {{ d.last_seen_ssid or '—' }}
+                {% if d.ssids_seen and d.ssids_seen|length > 1 %}
+                  <span class="muted" title="Also seen on: {{ d.ssids_seen[1:]|join(', ') }}">+{{ d.ssids_seen|length - 1 }}</span>
+                {% endif %}
+              </td>
+              <td class="actions">
+                <a href="{{ url_for('admin.device', mac=d.mac) }}" class="btn btn-sm">Review</a>
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        <div id="bulk-bar" style="display:none;padding:12px 20px;border-top:1px solid var(--border);background:var(--brand-primary-bg);display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <span style="font-weight:500"><span id="bulk-count">0</span> selected</span>
+          <label class="muted" style="margin:0">Approve for
+            <select name="duration" style="margin-top:0;display:inline-block;width:auto">
+              <option value="86400" selected>1 day</option>
+              <option value="604800">7 days</option>
+              <option value="2592000">30 days</option>
+              <option value="0">Forever</option>
+            </select>
+          </label>
+          <div class="row" style="margin-left:auto;gap:6px">
+            <button name="bulk_action" value="approve" class="btn btn-sm btn-success">Approve selected</button>
+            <button name="bulk_action" value="deny" class="btn btn-sm btn-danger">Deny selected</button>
+            <button name="bulk_action" value="ignore" class="btn btn-sm">Ignore selected</button>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+  </form>
 
   <script>
-    // Poll a tiny digest endpoint every 5 seconds. If anything changed compared
-    // to what we rendered with, reload the page to get the full updated tables.
-    const baseline = {
-      pending_count: {{ pending|length }},
-      last_decided_at: {{ (recent[0].decided_at.isoformat() if recent and recent[0].decided_at else 'null') | tojson }},
-      last_requested_at: {{ (pending[0].requested_at.isoformat() if pending and pending[0].requested_at else 'null') | tojson }},
-    };
-    const indicator = document.getElementById('live-indicator');
-    let backoff = 5000;
-
-    async function poll() {
-      try {
-        const r = await fetch('{{ url_for("admin.queue_status") }}', { cache: 'no-store' });
-        if (!r.ok) throw new Error('http ' + r.status);
-        const d = await r.json();
-        backoff = 5000;
-        indicator.style.color = 'green';
-        const changed =
-          d.pending_count !== baseline.pending_count ||
-          d.last_decided_at !== baseline.last_decided_at ||
-          d.last_requested_at !== baseline.last_requested_at;
-        if (changed) {
-          location.reload();
-          return;
-        }
-      } catch (e) {
-        indicator.style.color = 'orange';
-        backoff = Math.min(backoff * 2, 30000);
+    (function () {
+      const all = document.getElementById('select-all');
+      const rows = document.querySelectorAll('.row-check');
+      const bar = document.getElementById('bulk-bar');
+      const count = document.getElementById('bulk-count');
+      function refresh() {
+        const n = Array.from(rows).filter(r => r.checked).length;
+        if (count) count.textContent = n;
+        if (bar) bar.style.display = n > 0 ? 'flex' : 'none';
+        if (all) all.checked = n > 0 && n === rows.length;
       }
-      setTimeout(poll, backoff);
+      if (all) all.addEventListener('change', e => {
+        rows.forEach(r => r.checked = e.target.checked);
+        refresh();
+      });
+      rows.forEach(r => r.addEventListener('change', refresh));
+    })();
+  </script>
+
+  <div class="card">
+    <div class="card-header">
+      <h2>Recent decisions</h2>
+      <span class="meta">Last 50</span>
+    </div>
+    <div class="card-body compact">
+      {% if not recent %}
+        <div class="empty">
+          <div class="empty-icon">·</div>
+          <div>No decisions yet.</div>
+        </div>
+      {% else %}
+        <table class="data-list">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>By</th>
+              <th>Status</th>
+              <th>Expires</th>
+              <th>User</th>
+              <th>Device</th>
+              <th>SSID</th>
+              <th>MAC</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for d in recent %}
+            <tr>
+              <td>{{ d.decided_at.strftime('%Y-%m-%d %H:%M') if d.decided_at else '—' }}</td>
+              <td>{{ d.decided_by_email or '—' }}</td>
+              <td><span class="pill pill-{{ d.status }}">{{ d.status|capitalize }}</span></td>
+              <td>
+                {% if d.status == 'approved' and d.approved_until %}{{ d.approved_until.strftime('%Y-%m-%d %H:%M') }}
+                {% elif d.status == 'approved' %}forever
+                {% else %}—{% endif %}
+              </td>
+              <td>{{ d.requested_by_email or '—' }}</td>
+              <td>{{ d.friendly_name or d.device_type_label }}</td>
+              <td>
+                {{ d.last_seen_ssid or '—' }}
+                {% if d.ssids_seen and d.ssids_seen|length > 1 %}
+                  <span class="muted" title="Also seen on: {{ d.ssids_seen[1:]|join(', ') }}">+{{ d.ssids_seen|length - 1 }}</span>
+                {% endif %}
+              </td>
+              <td><a href="{{ url_for('admin.device', mac=d.mac) }}"><code>{{ d.mac_display }}</code></a></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2>Ignored <span class="muted">({{ ignored_count }})</span></h2>
+      {% if ignored_count %}
+        {% if show_ignored %}
+          <a href="{{ url_for('admin.queue') }}" class="muted">hide</a>
+        {% else %}
+          <a href="{{ url_for('admin.queue', ignored=1) }}" class="muted">show</a>
+        {% endif %}
+      {% endif %}
+    </div>
+    {% if show_ignored %}
+      <div class="card-body compact">
+        {% if not ignored %}
+          <div class="empty"><div>Nothing ignored.</div></div>
+        {% else %}
+          <table class="data-list">
+            <thead><tr>
+              <th>Ignored at</th><th>By</th><th>User</th><th>Device</th><th>SSID</th><th>MAC</th>
+            </tr></thead>
+            <tbody>
+            {% for d in ignored %}
+              <tr>
+                <td>{{ d.decided_at.strftime('%Y-%m-%d %H:%M') if d.decided_at else '—' }}</td>
+                <td>{{ d.decided_by_email or '—' }}</td>
+                <td>{{ d.requested_by_email or '—' }}</td>
+                <td>{{ d.friendly_name or d.device_type_label }}</td>
+                <td>{{ d.last_seen_ssid or '—' }}</td>
+                <td><a href="{{ url_for('admin.device', mac=d.mac) }}"><code>{{ d.mac_display }}</code></a></td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+  const baseline = {
+    pending_count: {{ pending|length }},
+    last_decided_at: {{ (recent[0].decided_at.isoformat() if recent and recent[0].decided_at else 'null') | tojson }},
+    last_requested_at: {{ (pending[0].requested_at.isoformat() if pending and pending[0].requested_at else 'null') | tojson }},
+  };
+  const indicator = document.getElementById('live-indicator');
+  let backoff = 5000;
+
+  async function poll() {
+    try {
+      const r = await fetch('{{ url_for("admin.queue_status") }}', { cache: 'no-store' });
+      if (!r.ok) throw new Error('http ' + r.status);
+      const d = await r.json();
+      backoff = 5000;
+      indicator.style.background = 'var(--success)';
+      const changed =
+        d.pending_count !== baseline.pending_count ||
+        d.last_decided_at !== baseline.last_decided_at ||
+        d.last_requested_at !== baseline.last_requested_at;
+      if (changed) {
+        location.reload();
+        return;
+      }
+    } catch (e) {
+      indicator.style.background = 'var(--warning)';
+      backoff = Math.min(backoff * 2, 30000);
     }
     setTimeout(poll, backoff);
-  </script>
+  }
+  setTimeout(poll, backoff);
+</script>
 {% endblock %}

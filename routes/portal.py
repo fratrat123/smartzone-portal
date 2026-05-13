@@ -25,7 +25,8 @@ from db import Device, EmailVerification, SessionLocal, audit
 from device_types import DEVICE_TYPES, DEVICE_TYPES_BY_KEY, infer_device_type
 from email_sender import send_verification_email
 from macfmt import canonical, display_colon
-from oauth import current_user, oauth, verify_workspace
+from notifications import notify_new_pending
+from oauth import current_user, is_admin, oauth, verify_workspace
 from smartzone import sz_client
 
 log = logging.getLogger(__name__)
@@ -148,8 +149,19 @@ def oauth_callback():
 
 @bp.route("/oauth/logout")
 def oauth_logout():
+    # Two distinct flows hit this route:
+    #   - Admin "Sign out" from the topbar → wants a real logout
+    #   - Portal user "switch account" → wants to keep the device's MAC in
+    #     session so they can sign in with a different email for the same device
+    # Distinguish by admin status of the currently-signed-in user.
+    user = current_user()
+    is_an_admin = bool(user) and is_admin(user)
+    mac = None if is_an_admin else session.get("pending_mac")
     session.clear()
-    return redirect(url_for("portal.start"))
+    if mac:
+        session["pending_mac"] = mac
+        return redirect(url_for("portal.start"))
+    return render_template("signed_out.html")
 
 
 # ---------------------------------------------------------------------------
@@ -384,6 +396,16 @@ def register():
             audit(s, "request", mac=mac, actor=user["email"],
                   details=f"type={device_type} name={friendly_name or ''}")
             s.commit()
+            # Ping admins now that we have a real user attached to this MAC
+            notify_new_pending(
+                mac=mac,
+                mac_display=display_colon(mac),
+                requested_by_email=user["email"],
+                friendly_name=friendly_name,
+                hostname=dev.hostname,
+                device_type=DEVICE_TYPES_BY_KEY.get(device_type, {}).get("label", device_type),
+                ssid=dev.last_seen_ssid or dev.first_seen_ssid,
+            )
             return redirect(url_for("portal.pending"))
 
         # GET — first render. Make sure hostname has been attempted.
@@ -404,6 +426,72 @@ def register():
         device_types=DEVICE_TYPES,
         pre_selected_type=pre_selected,
     )
+
+
+@bp.route("/me")
+def my_devices():
+    """Self-service: a user sees the devices they've registered."""
+    user = current_user()
+    if not user:
+        # Send them through the magic-link flow, then return here.
+        session["post_login_next"] = "/me"
+        return redirect(url_for("portal.start"))
+
+    with SessionLocal() as s:
+        rows = s.scalars(
+            select(Device)
+            .where(Device.requested_by_email == user["email"])
+            .order_by(Device.requested_at.desc().nullslast())
+        ).all()
+        devices = [{
+            "mac": d.mac,
+            "mac_display": display_colon(d.mac),
+            "status": d.status,
+            "hostname": d.hostname,
+            "friendly_name": d.friendly_name,
+            "device_type": (DEVICE_TYPES_BY_KEY.get(d.device_type) or {}).get("label", d.device_type or "—"),
+            "requested_at": d.requested_at,
+            "decided_at": d.decided_at,
+            "approved_until": d.approved_until,
+            "last_seen_at": d.last_seen_at,
+        } for d in rows]
+    return render_template("portal_my_devices.html", user=user, devices=devices)
+
+
+@bp.route("/me/remove/<mac>", methods=["POST"])
+def my_devices_remove(mac):
+    """A user removes one of their own devices. We mark it denied so it can't
+    rejoin via MAC auth, and CoA-kick if currently associated."""
+    user = current_user()
+    if not user:
+        abort(403)
+    try:
+        mac = canonical(mac)
+    except ValueError:
+        abort(400)
+
+    with SessionLocal() as s:
+        dev = s.get(Device, mac)
+        if not dev:
+            abort(404)
+        # A user can only remove their own devices.
+        if (dev.requested_by_email or "").lower() != user["email"].lower():
+            abort(403)
+        ap_mac = dev.first_seen_ap_mac
+        dev.status = "denied"
+        dev.decided_by_email = user["email"]
+        dev.decided_at = datetime.now(timezone.utc)
+        dev.approved_until = None
+        audit(s, "self_remove", mac=mac, actor=user["email"])
+        s.commit()
+
+    # Best-effort kick. If they're not connected this just no-ops.
+    try:
+        sz_client.disconnect_client(mac, ap_mac)
+    except Exception:
+        pass
+
+    return redirect(url_for("portal.my_devices"))
 
 
 @bp.route("/portal/pending")

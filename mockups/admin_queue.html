@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Hillman Wi-Fi · Admin queue</title>
+  <link rel="stylesheet" href="mockup-styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">H</span>
+      Hillman Wi-Fi
+    </div>
+    <nav>
+      <a href="admin_queue.html" class="active">Queue</a>
+      <a href="admin_device.html">Devices</a>
+      <a href="#">Admins</a>
+      <a href="#">Audit log</a>
+    </nav>
+    <div class="user">
+      <div class="avatar">PM</div>
+      <span>probertm@hillmanschools.com</span>
+    </div>
+  </header>
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>Device queue <span class="live-dot" title="Live updating"></span></h1>
+        <p class="subtitle">Approve, deny, or ignore device access requests.</p>
+      </div>
+      <div class="row">
+        <input type="text" placeholder="Search by user, MAC, hostname…" style="width:280px;margin-top:0">
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2>Pending <span class="pill pill-pending">3</span></h2>
+        <span class="meta">Sorted by oldest first</span>
+      </div>
+      <div class="card-body compact">
+        <table class="data-list">
+          <thead>
+            <tr>
+              <th>Requested</th>
+              <th>User</th>
+              <th>Device</th>
+              <th>Hostname</th>
+              <th>MAC</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span title="2026-05-12 13:24">11 min ago</span></td>
+              <td>aroberts@hillmanschools.com</td>
+              <td>Alice's iPhone · <span class="muted">iPhone</span></td>
+              <td><code>Alices-iPhone</code></td>
+              <td><code class="muted">aa:bb:cc:dd:ee:ff</code></td>
+              <td class="actions">
+                <a href="admin_device.html" class="btn btn-sm">Review</a>
+              </td>
+            </tr>
+            <tr>
+              <td>34 min ago</td>
+              <td>jsmith@hillmanschools.com</td>
+              <td>Math Chromebook · <span class="muted">Chromebook</span></td>
+              <td><code>HCS-CB-0042</code></td>
+              <td><code class="muted">f0:20:ff:e8:0f:ad</code></td>
+              <td class="actions">
+                <a href="admin_device.html" class="btn btn-sm">Review</a>
+              </td>
+            </tr>
+            <tr>
+              <td>2 hr ago</td>
+              <td>tnguyen@hillmanschools.com</td>
+              <td>Teacher MacBook · <span class="muted">Mac</span></td>
+              <td><code>TNguyen-MBP</code></td>
+              <td><code class="muted">84:b1:e2:5e:76:9e</code></td>
+              <td class="actions">
+                <a href="admin_device.html" class="btn btn-sm">Review</a>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2>Recent decisions</h2>
+        <span class="meta">Last 50</span>
+      </div>
+      <div class="card-body compact">
+        <table class="data-list">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>By</th>
+              <th>Status</th>
+              <th>Expires</th>
+              <th>User</th>
+              <th>Device</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>4 min ago</td>
+              <td>probertm@hillmanschools.com</td>
+              <td><span class="pill pill-approved">Approved</span></td>
+              <td>In 23 hours</td>
+              <td>probertm@hillmanschools.com</td>
+              <td>My desktop</td>
+            </tr>
+            <tr>
+              <td>1 hr ago</td>
+              <td>probertm@hillmanschools.com</td>
+              <td><span class="pill pill-expired">Expired</span></td>
+              <td>—</td>
+              <td>jsmith@hillmanschools.com</td>
+              <td>Old laptop</td>
+            </tr>
+            <tr>
+              <td>3 hr ago</td>
+              <td>probertm@hillmanschools.com</td>
+              <td><span class="pill pill-denied">Denied</span></td>
+              <td>—</td>
+              <td>unknown@hillmanschools.com</td>
+              <td>Random gaming device</td>
+            </tr>
+            <tr>
+              <td>Yesterday</td>
+              <td>probertm@hillmanschools.com</td>
+              <td><span class="pill pill-approved">Approved</span></td>
+              <td>Forever</td>
+              <td>print-server@hillmanschools.com</td>
+              <td>Library printer</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2>Ignored <span class="muted">(12)</span></h2>
+        <a href="#" class="muted">show</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

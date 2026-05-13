@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import create_engine, String, Text, DateTime, Enum, BigInteger, Integer, CHAR
+from sqlalchemy import create_engine, String, Text, DateTime, Enum, BigInteger, Integer, CHAR, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker, scoped_session
 from config import config
 
@@ -33,7 +33,22 @@ class Device(Base):
 
     first_seen_ssid: Mapped[str | None] = mapped_column(String(64))
     first_seen_ap_mac: Mapped[str | None] = mapped_column(CHAR(17))
+    last_seen_ssid: Mapped[str | None] = mapped_column(String(64))
+    last_seen_ap_mac: Mapped[str | None] = mapped_column(CHAR(17))
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class DeviceSsidSeen(Base):
+    """Per-(MAC, SSID) tally — every WLAN a device has hit, with first/last/count.
+    Lets the device detail page show every WLAN the MAC has associated to, even
+    though approval status stays global on Device."""
+    __tablename__ = "device_ssid_seen"
+
+    mac: Mapped[str] = mapped_column(CHAR(12), primary_key=True)
+    ssid: Mapped[str] = mapped_column(String(64), primary_key=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    hit_count: Mapped[int] = mapped_column(Integer, default=1)
 
 
 class EmailVerification(Base):
@@ -99,6 +114,30 @@ SessionLocal = scoped_session(sessionmaker(bind=engine, expire_on_commit=False))
 def init_db():
     """Create tables if they don't exist. Safe to call on every startup."""
     Base.metadata.create_all(engine)
+    _add_missing_columns()
+
+
+def _add_missing_columns():
+    """Lightweight ALTER TABLE for columns added after a DB was first created.
+
+    SQLAlchemy's create_all only creates missing tables, not missing columns on
+    existing tables. We inspect what's there and ADD COLUMN for anything new.
+    Each entry: (table, column_name, column_ddl). Skip silently if the table
+    doesn't exist yet (fresh DB — create_all already handled it).
+    """
+    additions = [
+        ("devices", "last_seen_ssid", "VARCHAR(64)"),
+        ("devices", "last_seen_ap_mac", "CHAR(17)"),
+    ]
+    insp = inspect(engine)
+    with engine.begin() as conn:
+        for table, col, ddl in additions:
+            if not insp.has_table(table):
+                continue
+            cols = {c["name"] for c in insp.get_columns(table)}
+            if col in cols:
+                continue
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
 
 
 def audit(session, action: str, *, mac: str | None = None, actor: str | None = None, details: str | None = None):

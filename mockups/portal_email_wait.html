@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Hillman Wi-Fi · Check your email</title>
+  <link rel="stylesheet" href="mockup-styles.css">
+</head>
+<body>
+  <div class="page-narrow">
+    <div style="text-align:center;margin-bottom:24px">
+      <div style="display:inline-grid;place-items:center;width:64px;height:64px;border-radius:50%;background:var(--brand-primary-bg);color:var(--brand-primary);font-size:1.8em;margin-bottom:12px">✉</div>
+      <h1 style="font-size:1.4em;margin:0 0 6px;font-weight:650">Check your email</h1>
+      <p class="muted" style="margin:0">We sent a verification email to <strong style="color:var(--text)">probertm@hillmanschools.com</strong></p>
+    </div>
+
+    <div class="card">
+      <div class="card-body">
+        <p class="muted" style="margin-top:0;font-size:0.95em">
+          Tap the link in the email, or type the 6-digit code below.
+        </p>
+
+        <form>
+          <input type="text" inputmode="numeric" maxlength="6" pattern="[0-9]{6}"
+                 class="code-input" autocomplete="one-time-code"
+                 placeholder="••••••">
+          <button type="submit" class="btn btn-primary btn-block" style="margin-top:14px">Verify</button>
+        </form>
+
+        <p style="text-align:center;margin:18px 0 0;color:var(--text-muted);font-size:0.88em">
+          <span style="display:inline-flex;align-items:center;gap:6px">
+            <span class="live-dot"></span>
+            Waiting for the link to be clicked…
+          </span>
+        </p>
+      </div>
+    </div>
+
+    <p class="muted" style="text-align:center;font-size:0.85em;margin-top:20px">
+      <a href="#">Use a different email</a>
+    </p>
+  </div>
+</body>
+</html>

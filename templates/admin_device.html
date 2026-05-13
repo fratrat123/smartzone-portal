@@ -1,67 +1,132 @@
 {% extends "base.html" %}
-{% block title %}{{ d.mac_display }}{% endblock %}
-{% block content %}
-  <p><a href="{{ url_for('admin.queue') }}">← queue</a></p>
-  <h1>{{ d.friendly_name or d.hostname or d.mac_display }}</h1>
-  <p class="status-{{ d.status }}"><strong>Status:</strong> {{ d.status }}</p>
+{% block title %}{{ d.friendly_name or d.hostname or d.mac_display }}{% endblock %}
 
-  <dl class="kv">
-    <dt>MAC</dt><dd><code>{{ d.mac_display }}</code></dd>
-    <dt>Hostname</dt><dd>{{ d.hostname }}</dd>
-    <dt>Device type</dt><dd>{{ d.device_type_label }}</dd>
-    <dt>Requested by</dt><dd>{{ d.requested_by_email or '—' }}
-      {% if d.requested_at %} · {{ d.requested_at.strftime('%Y-%m-%d %H:%M UTC') }}{% endif %}</dd>
-    {% if d.decided_at %}
-      <dt>Decided by</dt><dd>{{ d.decided_by_email }} · {{ d.decided_at.strftime('%Y-%m-%d %H:%M UTC') }}</dd>
-    {% endif %}
-    {% if d.approved_until %}
-      <dt>Approved until</dt><dd>{{ d.approved_until.strftime('%Y-%m-%d %H:%M UTC') }}</dd>
-    {% elif d.status == 'approved' %}
-      <dt>Approved until</dt><dd>forever</dd>
-    {% endif %}
-    <dt>First seen SSID</dt><dd>{{ d.first_seen_ssid or '—' }}</dd>
-    <dt>Last seen</dt><dd>{{ d.last_seen_at.strftime('%Y-%m-%d %H:%M UTC') if d.last_seen_at else '—' }}</dd>
-    {% if d.note %}<dt>Note</dt><dd>{{ d.note }}</dd>{% endif %}
-  </dl>
+{% block topbar %}
+  {% with active='queue' %}{% include '_admin_topbar.html' %}{% endwith %}
+{% endblock %}
 
-  <form method="post">
-    <label>Note (optional) <textarea name="note" rows="2"></textarea></label>
-    <label>Approve for:
-      <select name="duration">
-        <option value="86400" selected>1 day</option>
-        <option value="604800">7 days</option>
-        <option value="2592000">30 days</option>
-        <option value="0">Forever</option>
-      </select>
-    </label>
-    <div class="row">
-      {% if d.status != 'approved' %}
-        <button name="action" value="approve" class="button approve">Approve</button>
-      {% endif %}
-      {% if d.status != 'denied' %}
-        <button name="action" value="deny" class="button deny">Deny</button>
-      {% endif %}
-      {% if d.status != 'ignored' %}
-        <button name="action" value="ignore" class="button">Ignore</button>
-      {% endif %}
-      {% if d.status != 'pending' %}
-        <button name="action" value="reset" class="button">Reset to pending</button>
+{% block layout %}
+<div class="page" style="max-width:760px">
+  <p style="margin-bottom:16px"><a href="{{ url_for('admin.queue') }}" class="muted">← Back to queue</a></p>
+
+  <div class="page-header">
+    <div>
+      <h1>{{ d.friendly_name or d.hostname or d.mac_display }}</h1>
+      <p class="subtitle">
+        {% if d.requested_at %}
+          Submitted {{ d.requested_at.strftime('%Y-%m-%d %H:%M UTC') }}
+          {% if d.requested_by_email %} by <strong>{{ d.requested_by_email }}</strong>{% endif %}
+        {% else %}
+          No submission yet — RADIUS-detected only
+        {% endif %}
+      </p>
+    </div>
+    <span class="pill pill-{{ d.status }}" style="font-size:0.9em;padding:6px 12px">{{ d.status|capitalize }}</span>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2>Device details</h2></div>
+    <div class="card-body">
+      <dl class="kv">
+        <dt>MAC</dt><dd><code>{{ d.mac_display }}</code></dd>
+        <dt>Hostname</dt><dd>{{ d.hostname }}</dd>
+        <dt>Device type</dt><dd>{{ d.device_type_label }}</dd>
+        {% if d.decided_at %}
+          <dt>Decided by</dt>
+          <dd>{{ d.decided_by_email }} · {{ d.decided_at.strftime('%Y-%m-%d %H:%M UTC') }}</dd>
+        {% endif %}
+        {% if d.approved_until %}
+          <dt>Approved until</dt><dd>{{ d.approved_until.strftime('%Y-%m-%d %H:%M UTC') }}</dd>
+        {% elif d.status == 'approved' %}
+          <dt>Approved until</dt><dd>forever</dd>
+        {% endif %}
+        <dt>Last seen SSID</dt><dd>{{ d.last_seen_ssid or '—' }}</dd>
+        <dt>First seen SSID</dt><dd>{{ d.first_seen_ssid or '—' }}</dd>
+        <dt>Last seen</dt><dd>{{ d.last_seen_at.strftime('%Y-%m-%d %H:%M UTC') if d.last_seen_at else '—' }}</dd>
+        {% if d.note %}<dt>Note</dt><dd>{{ d.note }}</dd>{% endif %}
+      </dl>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2>Decision</h2></div>
+    <div class="card-body">
+      <form method="post">
+        <label class="field">Approve for
+          <select name="duration">
+            <option value="86400" selected>1 day</option>
+            <option value="604800">7 days</option>
+            <option value="2592000">30 days</option>
+            <option value="0">Forever</option>
+          </select>
+        </label>
+
+        <label class="field">Note <span class="hint">(optional, visible to other admins)</span>
+          <textarea name="note" rows="2" placeholder="e.g. Confirmed in person"></textarea>
+        </label>
+
+        <div class="row" style="margin-top:8px;flex-wrap:wrap">
+          {% if d.status != 'approved' %}
+            <button name="action" value="approve" class="btn btn-success">Approve</button>
+          {% endif %}
+          {% if d.status != 'denied' %}
+            <button name="action" value="deny" class="btn btn-danger">Deny</button>
+          {% endif %}
+          {% if d.status != 'ignored' %}
+            <button name="action" value="ignore" class="btn">Ignore</button>
+          {% endif %}
+          {% if d.status != 'pending' %}
+            <button name="action" value="reset" class="btn" style="margin-left:auto;color:var(--text-muted)">Reset to pending</button>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2>SSIDs seen</h2></div>
+    <div class="card-body compact">
+      {% if not ssids_seen %}
+        <div class="empty"><div>No SSID associations recorded yet.</div></div>
+      {% else %}
+        <table class="data-list">
+          <thead><tr><th>SSID</th><th>First seen</th><th>Last seen</th><th>Hits</th></tr></thead>
+          <tbody>
+          {% for s in ssids_seen %}
+            <tr>
+              <td>{{ s.ssid }}</td>
+              <td>{{ s.first_seen_at.strftime('%Y-%m-%d %H:%M') if s.first_seen_at else '—' }}</td>
+              <td>{{ s.last_seen_at.strftime('%Y-%m-%d %H:%M') if s.last_seen_at else '—' }}</td>
+              <td>{{ s.hit_count }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
       {% endif %}
     </div>
-  </form>
+  </div>
 
-  <h2>History</h2>
-  <table>
-    <thead><tr><th>When</th><th>Action</th><th>By</th><th>Details</th></tr></thead>
-    <tbody>
-    {% for h in history %}
-      <tr>
-        <td>{{ h.ts.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-        <td>{{ h.action }}</td>
-        <td>{{ h.actor_email or '' }}</td>
-        <td>{{ h.details or '' }}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+  <div class="card">
+    <div class="card-header"><h2>History</h2></div>
+    <div class="card-body compact">
+      {% if not history %}
+        <div class="empty"><div>No history yet.</div></div>
+      {% else %}
+        <table class="data-list">
+          <thead><tr><th>When</th><th>Action</th><th>By</th><th>Details</th></tr></thead>
+          <tbody>
+          {% for h in history %}
+            <tr>
+              <td>{{ h.ts.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+              <td>{{ h.action }}</td>
+              <td>{{ h.actor_email or '' }}</td>
+              <td>{{ h.details or '' }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+    </div>
+  </div>
+</div>
 {% endblock %}

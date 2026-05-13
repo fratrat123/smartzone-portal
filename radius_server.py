@@ -20,8 +20,9 @@ from pyrad import packet
 from pyrad.packet import AuthPacket, AccessAccept, AccessReject, AccessRequest
 
 from config import config
-from db import Device, SessionLocal, audit
+from db import Device, DeviceSsidSeen, SessionLocal, audit
 from macfmt import canonical
+from notifications import notify_new_pending
 from smartzone import sz_client
 
 log = logging.getLogger(__name__)
@@ -75,24 +76,22 @@ class MacAuthServer:
 
         with SessionLocal() as s:
             dev = s.get(Device, mac)
+            now = datetime.now(timezone.utc)
             if dev and dev.status == "approved":
-                now = datetime.now(timezone.utc)
                 # Expired approval -> reject. The background sweeper will flip
                 # status to 'expired' on its next pass and CoA-kick if needed.
-                # _as_utc re-attaches tzinfo because SQLite strips it on read.
+                # tz re-attach because SQLite strips it on read.
                 approved_until = dev.approved_until
                 if approved_until and approved_until.tzinfo is None:
                     approved_until = approved_until.replace(tzinfo=timezone.utc)
                 if approved_until and approved_until < now:
-                    dev.last_seen_at = now
+                    _touch_seen(s, mac, ssid_name, ap_mac, dev, now)
                     audit(s, "radius_reject", mac=mac,
                           details=f"approval expired at {dev.approved_until.isoformat()}; ssid={ssid_name}")
                     s.commit()
                     log.info("REJECT %s (expired) (ssid=%s)", mac, ssid_name)
                     return self._reply(pkt, addr, AccessReject)
-                dev.last_seen_at = now
-                if ap_mac:
-                    dev.first_seen_ap_mac = ap_mac  # keep current AP info fresh
+                _touch_seen(s, mac, ssid_name, ap_mac, dev, now)
                 audit(s, "radius_accept", mac=mac, details=f"ssid={ssid_name}")
                 s.commit()
                 log.info("ACCEPT %s (ssid=%s)", mac, ssid_name)
@@ -104,7 +103,9 @@ class MacAuthServer:
                     status="pending",
                     first_seen_ssid=ssid_name,
                     first_seen_ap_mac=ap_mac,
-                    last_seen_at=datetime.now(timezone.utc),
+                    last_seen_ssid=ssid_name,
+                    last_seen_ap_mac=ap_mac,
+                    last_seen_at=now,
                 )
                 s.add(dev)
                 # Best-effort hostname enrichment, only on first sighting.
@@ -115,21 +116,55 @@ class MacAuthServer:
                     hostname = None
                 if hostname:
                     dev.hostname = hostname
+                _touch_seen(s, mac, ssid_name, ap_mac, dev, now)
                 audit(s, "radius_reject", mac=mac, details=f"new pending; ssid={ssid_name}")
+                _notify_args = (mac, hostname, ssid_name)
+                _is_new_pending = True
             else:
-                dev.last_seen_at = datetime.now(timezone.utc)
-                if ap_mac:
-                    dev.first_seen_ap_mac = ap_mac  # keep current AP info fresh
+                _touch_seen(s, mac, ssid_name, ap_mac, dev, now)
                 audit(s, "radius_reject", mac=mac, details=f"status={dev.status}; ssid={ssid_name}")
+                _is_new_pending = False
             s.commit()
 
         log.info("REJECT %s (ssid=%s)", mac, ssid_name)
+        if _is_new_pending:
+            # First time we've seen this MAC — admins get pinged. Fire-and-forget.
+            notify_new_pending(
+                mac=mac,
+                mac_display=":".join(mac[i:i + 2] for i in range(0, 12, 2)).upper(),
+                requested_by_email=None,
+                friendly_name=None,
+                hostname=_notify_args[1],
+                device_type=None,
+                ssid=_notify_args[2],
+            )
         return self._reply(pkt, addr, AccessReject)
 
     def _reply(self, pkt: AuthPacket, addr, code: int):
         reply = pkt.CreateReply()
         reply.code = code
         self._sock.sendto(reply.ReplyPacket(), addr)
+
+
+def _touch_seen(s, mac: str, ssid: str | None, ap_mac: str | None,
+                dev: "Device", now: datetime) -> None:
+    """Refresh per-device + per-(device,SSID) last-seen tracking. No commit."""
+    dev.last_seen_at = now
+    if ssid:
+        dev.last_seen_ssid = ssid
+    if ap_mac:
+        dev.last_seen_ap_mac = ap_mac
+        if not dev.first_seen_ap_mac:
+            dev.first_seen_ap_mac = ap_mac
+    if not ssid:
+        return
+    row = s.get(DeviceSsidSeen, (mac, ssid))
+    if row is None:
+        s.add(DeviceSsidSeen(mac=mac, ssid=ssid,
+                             first_seen_at=now, last_seen_at=now, hit_count=1))
+    else:
+        row.last_seen_at = now
+        row.hit_count = (row.hit_count or 0) + 1
 
 
 def _first(pkt, key: str) -> str | None:

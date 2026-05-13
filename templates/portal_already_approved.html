@@ -1,8 +1,24 @@
 {% extends "base.html" %}
 {% block title %}Already approved{% endblock %}
 {% block content %}
-  <h1>You're already approved</h1>
-  <p>Device <code>{{ mac }}</code> is approved on this network.</p>
-  <p class="muted">If you're seeing this page, your device may not have completed reauthentication yet.
-     Toggle Wi-Fi off and back on, or forget and rejoin the network.</p>
+  <div style="text-align:center;margin-bottom:24px">
+    <div style="display:inline-grid;place-items:center;width:64px;height:64px;border-radius:50%;background:var(--success-bg);color:var(--success);font-size:1.8em;margin-bottom:12px">✓</div>
+    <h1 style="font-size:1.4em;margin:0 0 6px;font-weight:650">You're approved</h1>
+    <p class="muted" style="margin:0">This device should be on the network within a few seconds.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <dl class="kv">
+        <dt>MAC</dt>
+        <dd><code>{{ mac }}</code></dd>
+        <dt>Status</dt>
+        <dd><span class="pill pill-approved">Approved</span></dd>
+      </dl>
+    </div>
+  </div>
+
+  <p class="muted" style="text-align:center;font-size:0.85em;margin-top:20px">
+    If you're not online in a few seconds, toggle Wi-Fi off and back on.
+  </p>
 {% endblock %}

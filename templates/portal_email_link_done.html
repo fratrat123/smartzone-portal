@@ -1,13 +1,22 @@
 {% extends "base.html" %}
 {% block title %}{{ "Verified" if ok else "Verification failed" }}{% endblock %}
 {% block content %}
-  {% if ok %}
-    <h1>✓ Verified</h1>
-  {% else %}
-    <h1>Couldn't verify</h1>
-  {% endif %}
-  <p>{{ message }}</p>
-  {% if not ok %}
-    <p><a href="{{ url_for('portal.start') }}">Start over</a></p>
-  {% endif %}
+  <div style="text-align:center;margin-bottom:24px">
+    {% if ok %}
+      <div style="display:inline-grid;place-items:center;width:64px;height:64px;border-radius:50%;background:var(--success-bg);color:var(--success);font-size:1.8em;margin-bottom:12px">✓</div>
+      <h1 style="font-size:1.4em;margin:0 0 6px;font-weight:650">Verified</h1>
+    {% else %}
+      <div style="display:inline-grid;place-items:center;width:64px;height:64px;border-radius:50%;background:var(--danger-bg);color:var(--danger);font-size:1.8em;margin-bottom:12px">✗</div>
+      <h1 style="font-size:1.4em;margin:0 0 6px;font-weight:650">Couldn't verify</h1>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <p style="margin:0">{{ message }}</p>
+      {% if not ok %}
+        <p style="margin:14px 0 0"><a class="btn" href="{{ url_for('portal.start') }}">Start over</a></p>
+      {% endif %}
+    </div>
+  </div>
 {% endblock %}

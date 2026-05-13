@@ -1,42 +1,60 @@
 {% extends "base.html" %}
 {% block title %}Register your device{% endblock %}
 {% block content %}
-  <h1>Register this device</h1>
-  <p class="muted">Signed in as <strong>{{ user.email }}</strong>
-     · <a href="{{ url_for('portal.oauth_logout') }}">switch account</a></p>
+  <div style="text-align:center;margin-bottom:24px">
+    <h1 style="font-size:1.4em;margin:0 0 6px;font-weight:650">Register this device</h1>
+    <p class="muted" style="margin:0;font-size:0.92em">
+      Signed in as <strong style="color:var(--text)">{{ user.email }}</strong>
+      · <a href="{{ url_for('portal.oauth_logout') }}">switch</a>
+    </p>
+  </div>
 
-  <dl class="kv">
-    <dt>Device hostname</dt><dd>{{ hostname or '(not detected)' }}</dd>
-    <dt>MAC address</dt><dd><code>{{ mac_display }}</code></dd>
-  </dl>
+  <div class="card">
+    <div class="card-body">
+      <dl class="kv" style="margin-bottom:20px">
+        <dt>Hostname</dt>
+        <dd>{{ hostname or '(not detected)' }}</dd>
+        <dt>MAC</dt>
+        <dd><code style="color:var(--text-muted)">{{ mac_display }}</code></dd>
+      </dl>
 
-  <form method="post">
-    <label>
-      Friendly name (optional — shows up in admin)
-      <input name="friendly_name" maxlength="128" placeholder="e.g. Alice's work iPhone">
-    </label>
+      <form method="post">
+        <label class="field">
+          Device name <span class="hint">(shows up for the admin)</span>
+          <input name="friendly_name" type="text" maxlength="128"
+                 placeholder="e.g. Alice's work iPhone">
+        </label>
 
-    <label>Device type
-      <select name="device_type" id="device_type" required>
-        {% for d in device_types %}
-          <option value="{{ d.key }}" {% if d.key == pre_selected_type %}selected{% endif %}>{{ d.label }}</option>
-        {% endfor %}
-      </select>
-    </label>
+        <label class="field">Device type
+          <select name="device_type" id="device_type" required>
+            {% for d in device_types %}
+              <option value="{{ d.key }}" {% if d.key == pre_selected_type %}selected{% endif %}>{{ d.label }}</option>
+            {% endfor %}
+          </select>
+        </label>
 
-    <details class="instructions">
-      <summary>Optional: disable MAC randomization for this network</summary>
-      <p class="muted">Only needed if you want this device to keep the same approval after a
-        network reset, or to use the same MAC across multiple SSIDs.</p>
-      {% for d in device_types %}
-        <ol class="steps" data-for="{{ d.key }}" hidden>
-          {% for step in d.instructions %}<li>{{ step }}</li>{% endfor %}
-        </ol>
-      {% endfor %}
-    </details>
+        <details style="margin-top:8px;background:var(--surface-muted);border-radius:var(--radius-sm);padding:12px 14px;border:1px solid var(--border)">
+          <summary style="cursor:pointer;font-size:0.92em;font-weight:500;user-select:none">
+            Optional: disable MAC randomization on this device
+          </summary>
+          <p class="muted" style="font-size:0.88em;margin:10px 0 4px">
+            Only needed if you want this device to keep the same approval after a
+            network reset, or to use the same MAC across multiple SSIDs.
+          </p>
+          {% for d in device_types %}
+            <ol class="muted steps" data-for="{{ d.key }}" hidden
+                style="font-size:0.9em;padding-left:18px;margin:10px 0 0">
+              {% for step in d.instructions %}<li>{{ step }}</li>{% endfor %}
+            </ol>
+          {% endfor %}
+        </details>
 
-    <button type="submit" class="button">Submit request</button>
-  </form>
+        <button type="submit" class="btn btn-primary btn-block" style="margin-top:18px">
+          Submit request
+        </button>
+      </form>
+    </div>
+  </div>
 
   <script>
     const sel = document.getElementById('device_type');

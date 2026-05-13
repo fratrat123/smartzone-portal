@@ -1,7 +1,17 @@
 {% extends "base.html" %}
 {% block title %}Connect to Wi-Fi first{% endblock %}
 {% block content %}
-  <h1>Connect to the Wi-Fi network first</h1>
-  <p>This page can only register a device that is currently associated to the guest SSID.
-     Join the network on this device, then re-open this page.</p>
+  <div style="text-align:center;margin-bottom:24px">
+    <div style="display:inline-grid;place-items:center;width:64px;height:64px;border-radius:50%;background:var(--warning-bg);color:var(--warning);font-size:1.8em;margin-bottom:12px">📡</div>
+    <h1 style="font-size:1.4em;margin:0 0 6px;font-weight:650">Connect to Wi-Fi first</h1>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <p style="margin:0">
+        This page registers a device that's currently connected to the guest SSID.
+        Join the network on this device, then re-open the captive portal.
+      </p>
+    </div>
+  </div>
 {% endblock %}

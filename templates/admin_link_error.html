@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Link error{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:520px;margin:40px auto">
+  <div class="card-header"><h2>This link can't be used</h2></div>
+  <div class="card-body">
+    <p>{{ error }}</p>
+    <p class="muted">If the request is still in the queue, you can act on it from
+    the admin page directly.</p>
+    <p style="margin-top:16px">
+      <a href="{{ url_for('admin.queue') }}" class="btn">Open admin queue</a>
+    </p>
+  </div>
+</div>
+{% endblock %}

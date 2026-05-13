@@ -3,12 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>{% block title %}Network access{% endblock %}</title>
+  <title>{% block title %}Wi-Fi access{% endblock %} · {{ brand_name|default('Hillman Wi-Fi') }}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-  <main class="card">
-    {% block content %}{% endblock %}
-  </main>
+  {% block topbar %}{% endblock %}
+  {% block layout %}
+    <main class="page-narrow">
+      {% block content %}{% endblock %}
+    </main>
+  {% endblock %}
 </body>
 </html>

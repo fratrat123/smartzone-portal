@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Audit log{% endblock %}
+
+{% block topbar %}
+  {% with active='audit' %}{% include '_admin_topbar.html' %}{% endwith %}
+{% endblock %}
+
+{% block layout %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1>Audit log</h1>
+      <p class="subtitle">{{ total }} entr{{ 'y' if total == 1 else 'ies' }} · everything the system has logged.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <form method="get" class="form-row" style="flex-wrap:wrap;align-items:end;gap:12px">
+        <label class="field" style="flex:1;min-width:140px;margin:0">
+          Action
+          <select name="action">
+            <option value="">All actions</option>
+            {% for a in actions %}
+              <option value="{{ a }}" {% if a == action %}selected{% endif %}>{{ a }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="field" style="flex:1;min-width:160px;margin:0">
+          MAC
+          <input name="mac" value="{{ mac }}" placeholder="aa:bb:cc:dd:ee:ff or aabbccddeeff">
+        </label>
+        <label class="field" style="flex:1;min-width:160px;margin:0">
+          Actor email
+          <input name="actor" value="{{ actor }}" placeholder="alice@…">
+        </label>
+        <button type="submit" class="btn btn-primary">Filter</button>
+        {% if action or mac or actor %}
+          <a href="{{ url_for('admin.audit_view') }}" class="btn">Clear</a>
+        {% endif %}
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body compact">
+      {% if not rows %}
+        <div class="empty">
+          <div class="empty-icon">·</div>
+          <div>No entries match.</div>
+        </div>
+      {% else %}
+        <table class="data-list">
+          <thead><tr>
+            <th>When</th><th>Action</th><th>Actor</th><th>MAC</th><th>Details</th>
+          </tr></thead>
+          <tbody>
+          {% for r in rows %}
+            <tr>
+              <td>{{ r.ts.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+              <td><code style="font-size:0.85em">{{ r.action }}</code></td>
+              <td>{{ r.actor_email or '—' }}</td>
+              <td>{% if r.mac %}<a href="{{ url_for('admin.device', mac=r.mac) }}"><code>{{ r.mac_display }}</code></a>{% else %}—{% endif %}</td>
+              <td class="muted" style="font-size:0.9em">{{ r.details or '' }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+    </div>
+    {% if total_pages > 1 %}
+      <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:0.9em">
+        <span class="muted">Page {{ page }} of {{ total_pages }}</span>
+        <div class="row" style="gap:6px">
+          {% if page > 1 %}
+            <a class="btn btn-sm" href="{{ url_for('admin.audit_view', action=action, mac=mac, actor=actor, page=page-1) }}">‹ Prev</a>
+          {% endif %}
+          {% if page < total_pages %}
+            <a class="btn btn-sm" href="{{ url_for('admin.audit_view', action=action, mac=mac, actor=actor, page=page+1) }}">Next ›</a>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

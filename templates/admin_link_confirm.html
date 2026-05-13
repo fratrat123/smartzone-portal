@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ action|capitalize }} {{ d.friendly_name or d.mac_display }}{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:560px;margin:40px auto">
+  <div class="card-header">
+    <h2>{{ action|capitalize }} this device?</h2>
+  </div>
+  <div class="card-body">
+    <dl class="kv">
+      <dt>Device</dt><dd>{{ d.friendly_name or d.hostname or '(unnamed)' }}</dd>
+      <dt>Type</dt><dd>{{ d.device_type_label }}</dd>
+      <dt>MAC</dt><dd><code>{{ d.mac_display }}</code></dd>
+      <dt>Requested by</dt><dd>{{ d.requested_by_email or '(no portal sign-in)' }}</dd>
+      <dt>SSID</dt><dd>{{ d.last_seen_ssid or d.first_seen_ssid or '—' }}</dd>
+    </dl>
+
+    <p class="muted" style="margin-top:14px">
+      You're signing in as <strong>{{ recipient_email }}</strong> via the link
+      that was emailed to you.
+    </p>
+
+    <form method="post" style="margin-top:16px">
+      {% if action == 'approve' %}
+        <label class="field">Approve for
+          <select name="duration">
+            <option value="86400" selected>1 day</option>
+            <option value="604800">7 days</option>
+            <option value="2592000">30 days</option>
+            <option value="0">Forever</option>
+          </select>
+        </label>
+      {% endif %}
+      <div class="row" style="margin-top:8px">
+        {% if action == 'approve' %}
+          <button class="btn btn-success">Confirm approve</button>
+        {% else %}
+          <button class="btn btn-danger">Confirm deny</button>
+        {% endif %}
+        <a href="{{ url_for('admin.queue') }}" class="btn" style="margin-left:auto">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

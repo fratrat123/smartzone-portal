@@ -1,13 +1,13 @@
 """Flask app entry. Starts the RADIUS server in a background thread."""
 import logging
 
-from flask import Flask, redirect, url_for
+from flask import Flask, redirect, render_template, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from config import config
 from db import init_db
 from expiry import start_sweeper_thread
-from oauth import init_oauth
+from oauth import current_user, init_oauth
 from radius_server import start_radius_thread
 from routes.admin import bp as admin_bp
 from routes.portal import bp as portal_bp
@@ -29,13 +29,64 @@ def create_app() -> Flask:
     app.register_blueprint(portal_bp)
     app.register_blueprint(admin_bp)
 
+    # Make `user` available in every template without explicit passing.
+    @app.context_processor
+    def inject_user():
+        return {"user": current_user()}
+
     @app.route("/")
     def index():
         return redirect(url_for("portal.landing"))
 
     @app.route("/healthz")
     def healthz():
-        return {"ok": True}
+        from sqlalchemy import text
+        from db import SessionLocal
+        from smartzone import sz_client
+
+        checks: dict = {"flask": True}
+        ok = True
+
+        # DB check — a trivial SELECT proves the engine + file are reachable.
+        try:
+            with SessionLocal() as s:
+                s.execute(text("SELECT 1"))
+            checks["db"] = True
+        except Exception as e:
+            checks["db"] = f"error: {e!s}"
+            ok = False
+
+        # SmartZone API — try a service-ticket auth round trip.
+        # This is a soft check: if SZ is unreachable but RADIUS still works,
+        # the portal is degraded but not down. We report it, don't fail.
+        try:
+            sz_client._ticket_param()  # forces auth if no cached ticket
+            checks["smartzone_api"] = True
+        except Exception as e:
+            checks["smartzone_api"] = f"error: {e!s}"
+
+        return ({"ok": ok, "checks": checks}, 200 if ok else 503)
+
+    # ---- Friendly error pages ----
+    @app.errorhandler(404)
+    def _not_found(e):
+        return render_template("error.html",
+            status="404", icon="?", title="Page not found",
+            message="That page doesn't exist or has moved."), 404
+
+    @app.errorhandler(403)
+    def _forbidden(e):
+        return render_template("error.html",
+            status="403", icon="🚫", title="Access denied",
+            message="You don't have permission to view this page. "
+                    "If you should — ask an existing admin to add your email."), 403
+
+    @app.errorhandler(500)
+    def _server_error(e):
+        return render_template("error.html",
+            status="500", icon="!", title="Something went wrong",
+            message="The server hit an unexpected error. The log has the details — "
+                    "ping your administrator if this keeps happening."), 500
 
     return app
 

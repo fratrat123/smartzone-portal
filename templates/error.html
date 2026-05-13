@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}{{ status }} · {{ title }}{% endblock %}
+{% block content %}
+  <div style="text-align:center;margin-bottom:24px">
+    <div style="display:inline-grid;place-items:center;width:64px;height:64px;border-radius:50%;background:var(--danger-bg);color:var(--danger);font-size:1.8em;margin-bottom:12px">{{ icon }}</div>
+    <h1 style="font-size:1.4em;margin:0 0 6px;font-weight:650">{{ title }}</h1>
+    <p class="muted" style="margin:0">{{ status }} {{ subtitle or '' }}</p>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <p style="margin:0">{{ message }}</p>
+      <p style="margin:16px 0 0">
+        <a class="btn" href="{{ url_for('portal.start') if user is none else url_for('admin.queue') }}">
+          ← Back
+        </a>
+      </p>
+    </div>
+  </div>
+{% endblock %}

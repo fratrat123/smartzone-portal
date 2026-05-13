@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Hillman Wi-Fi · Register your device</title>
+  <link rel="stylesheet" href="mockup-styles.css">
+</head>
+<body>
+  <div class="page-narrow">
+    <div style="text-align:center;margin-bottom:24px">
+      <h1 style="font-size:1.4em;margin:0 0 6px;font-weight:650">Register this device</h1>
+      <p class="muted" style="margin:0;font-size:0.92em">
+        Signed in as <strong style="color:var(--text)">probertm@hillmanschools.com</strong>
+        · <a href="#">switch</a>
+      </p>
+    </div>
+
+    <div class="card">
+      <div class="card-body">
+        <dl class="kv" style="margin-bottom:20px">
+          <dt>Hostname</dt>
+          <dd><code>DESKTOP-CTOQUVU</code></dd>
+          <dt>MAC</dt>
+          <dd><code style="color:var(--text-muted)">f0:20:ff:e8:0f:ad</code></dd>
+        </dl>
+
+        <form>
+          <label class="field">
+            Device name <span class="hint">(shows up for the admin)</span>
+            <input type="text" placeholder="e.g. Alice's work iPhone" value="My desktop">
+          </label>
+
+          <label class="field">Device type
+            <select>
+              <option>iPhone or iPad</option>
+              <option>Android phone or tablet</option>
+              <option>Mac (macOS)</option>
+              <option selected>Windows laptop</option>
+              <option>Chromebook</option>
+              <option>Smart TV / console / IoT</option>
+              <option>Something else</option>
+            </select>
+          </label>
+
+          <details style="margin-top:8px;background:var(--surface-muted);border-radius:var(--radius-sm);padding:12px 14px;border:1px solid var(--border)">
+            <summary style="cursor:pointer;font-size:0.92em;font-weight:500;user-select:none">
+              Optional: disable MAC randomization on this device
+            </summary>
+            <ol class="muted" style="font-size:0.9em;padding-left:18px;margin:10px 0 0">
+              <li>Open Settings → Network &amp; Internet → Wi-Fi</li>
+              <li>Click this network → Random hardware addresses</li>
+              <li>Set to "Off" for this network</li>
+              <li>Forget the network and reconnect after approval</li>
+            </ol>
+          </details>
+
+          <button type="submit" class="btn btn-primary btn-block" style="margin-top:18px">
+            Submit request
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

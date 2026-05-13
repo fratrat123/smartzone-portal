@@ -1,21 +1,60 @@
 {% extends "base.html" %}
-{% block title %}Request submitted{% endblock %}
+{% block title %}Waiting for approval{% endblock %}
 {% block content %}
-  <h1>Request submitted</h1>
-  <p>Your device <code>{{ mac }}</code> is waiting for an admin to approve it.</p>
-  <p class="muted">This page will update automatically when your request is reviewed.
-     Once approved, your device will reconnect within a few seconds.</p>
-  {% if device and device.requested_at %}
-    <p class="muted">Submitted: {{ device.requested_at.strftime('%Y-%m-%d %H:%M UTC') }}</p>
-  {% endif %}
+  <div style="text-align:center;margin-bottom:24px">
+    <div style="display:inline-grid;place-items:center;width:64px;height:64px;border-radius:50%;background:var(--warning-bg);color:var(--warning);font-size:1.8em;margin-bottom:12px">⏳</div>
+    <h1 style="font-size:1.4em;margin:0 0 6px;font-weight:650">Request submitted</h1>
+    <p class="muted" style="margin:0">An admin will review your device shortly.</p>
+  </div>
 
-  <p id="status" class="muted" aria-live="polite">⏳ Waiting for approval…</p>
+  <div class="card">
+    <div class="card-body">
+      <dl class="kv">
+        <dt>MAC</dt>
+        <dd><code>{{ mac }}</code></dd>
+        {% if device and device.friendly_name %}
+          <dt>Name</dt>
+          <dd>{{ device.friendly_name }}</dd>
+        {% endif %}
+        {% if device and device.requested_at %}
+          <dt>Submitted</dt>
+          <dd>{{ device.requested_at.strftime('%Y-%m-%d %H:%M UTC') }}</dd>
+        {% endif %}
+        <dt>Status</dt>
+        <dd><span class="pill pill-pending">Pending</span></dd>
+      </dl>
+
+      <div id="status-pending" style="margin:24px 0 0;color:var(--text-muted);font-size:0.9em;text-align:center" aria-live="polite">
+        <span class="live-dot"></span>
+        This page will update automatically when reviewed.
+      </div>
+      <div id="status-denied" style="display:none;margin:24px 0 0;text-align:center">
+        <div class="notice notice-error" style="margin:0">
+          <strong>Your request was declined.</strong><br>
+          <span style="font-size:0.92em">Contact your school IT if you think this is a mistake.</span>
+        </div>
+      </div>
+      <div id="status-approved" style="display:none;margin:24px 0 0;text-align:center">
+        <strong style="color:var(--success)">✓ Approved! Reconnecting…</strong>
+      </div>
+    </div>
+  </div>
+
+  <p class="muted" style="text-align:center;font-size:0.85em;margin-top:20px">
+    You can close this page — your device will reconnect once approved.
+  </p>
 
   <script>
-    // Poll the status endpoint every 3 seconds. When status changes from pending,
-    // reload the page so the server renders the appropriate next state.
-    const statusEl = document.getElementById('status');
+    const pendingBox = document.getElementById('status-pending');
+    const deniedBox = document.getElementById('status-denied');
+    const approvedBox = document.getElementById('status-approved');
     let backoff = 3000;
+
+    function show(which) {
+      pendingBox.style.display  = (which === 'pending')  ? 'block' : 'none';
+      deniedBox.style.display   = (which === 'denied')   ? 'block' : 'none';
+      approvedBox.style.display = (which === 'approved') ? 'block' : 'none';
+    }
 
     async function poll() {
       try {
@@ -24,18 +63,18 @@
         const data = await r.json();
         backoff = 3000;
         if (data.status === 'approved') {
-          statusEl.textContent = '✓ Approved! Reconnecting…';
+          show('approved');
           setTimeout(() => location.reload(), 800);
           return;
         }
         if (data.status === 'denied') {
-          statusEl.textContent = '✗ Denied by an admin.';
-          return;  // stop polling
+          show('denied');
+          return;  // stop polling — they've been told
         }
-        // still pending — keep polling
+        // 'ignored' and any other state — keep showing "pending" silently.
+        // (Ignored is supposed to be invisible to the requester.)
         setTimeout(poll, backoff);
       } catch (e) {
-        // Network blip — likely from reassociation. Back off and keep trying.
         backoff = Math.min(backoff * 2, 15000);
         setTimeout(poll, backoff);
       }

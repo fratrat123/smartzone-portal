@@ -12,11 +12,12 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
-from db import Device, SessionLocal, audit
+from config import config
+from db import AuditLog, Device, EmailVerification, SessionLocal, audit
 from smartzone import sz_client
 
 log = logging.getLogger(__name__)
@@ -56,11 +57,51 @@ def _sweep_once() -> int:
     return flipped
 
 
+def _cleanup_email_verifications() -> int:
+    """Delete email_verifications rows older than EMAIL_VERIFY_RETENTION_DAYS."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=config.EMAIL_VERIFY_RETENTION_DAYS)
+    with SessionLocal() as s:
+        result = s.execute(
+            delete(EmailVerification).where(EmailVerification.created_at < cutoff)
+        )
+        s.commit()
+        n = result.rowcount or 0
+    if n:
+        log.info("expiry: pruned %d old email_verifications", n)
+    return n
+
+
+def _cleanup_audit_log() -> int:
+    """Delete audit_log rows older than AUDIT_LOG_RETENTION_DAYS (0 disables)."""
+    if config.AUDIT_LOG_RETENTION_DAYS <= 0:
+        return 0
+    cutoff = datetime.now(timezone.utc) - timedelta(days=config.AUDIT_LOG_RETENTION_DAYS)
+    with SessionLocal() as s:
+        result = s.execute(
+            delete(AuditLog).where(AuditLog.ts < cutoff)
+        )
+        s.commit()
+        n = result.rowcount or 0
+    if n:
+        log.info("expiry: pruned %d old audit_log rows", n)
+    return n
+
+
 def _loop():
     log.info("expiry: sweeper started (interval=%ds)", SWEEP_INTERVAL_SECONDS)
+    cleanup_tick = 0
     while True:
         try:
             _sweep_once()
+            # Cleanup runs less frequently (once per hour) since rows accumulate slowly.
+            cleanup_tick += 1
+            if cleanup_tick >= 60:  # 60 minutes
+                cleanup_tick = 0
+                try:
+                    _cleanup_email_verifications()
+                    _cleanup_audit_log()
+                except Exception:
+                    log.exception("expiry: cleanup crashed")
         except Exception:
             log.exception("expiry: sweep crashed")
         time.sleep(SWEEP_INTERVAL_SECONDS)

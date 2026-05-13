@@ -52,5 +52,11 @@ class Config:
     SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "Wi-Fi Portal")
     EMAIL_VERIFY_TTL_MINUTES = int(os.getenv("EMAIL_VERIFY_TTL_MINUTES", "15"))
 
+    NOTIFY_SLACK_WEBHOOK_URL = os.getenv("NOTIFY_SLACK_WEBHOOK_URL", "") or None
+    NOTIFY_EMAILS = _csv("NOTIFY_EMAILS")
+
+    EMAIL_VERIFY_RETENTION_DAYS = int(os.getenv("EMAIL_VERIFY_RETENTION_DAYS", "1"))
+    AUDIT_LOG_RETENTION_DAYS = int(os.getenv("AUDIT_LOG_RETENTION_DAYS", "90"))
+
 
 config = Config()

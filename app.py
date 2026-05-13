@@ -19,7 +19,14 @@ def _common_app() -> Flask:
     app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_for=1)
 
     app.config["SECRET_KEY"] = config.SECRET_KEY
-    app.config["SESSION_COOKIE_SECURE"] = config.PORTAL_BASE_URL.startswith("https://")
+    # SESSION_COOKIE_SECURE: only when we're actually serving HTTPS. In
+    # bootstrap mode the box is always reachable over plain HTTP (no cert
+    # yet); marking the cookie Secure there means the browser refuses to
+    # send it back, and the wizard session vanishes between requests.
+    # Only enable Secure in normal mode AND when PORTAL_BASE_URL is HTTPS.
+    app.config["SESSION_COOKIE_SECURE"] = (
+        is_setup_complete() and config.PORTAL_BASE_URL.startswith("https://")
+    )
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
     @app.context_processor

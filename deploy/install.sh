@@ -93,8 +93,16 @@ log "Granting service user write access to /etc/netplan, /etc/letsencrypt, /var/
 #   (b) list it in ReadWritePaths in captive-portal.service.
 install -d -o "${APP_USER}" -g "${APP_USER}" -m 0755 /etc/netplan
 install -d -o "${APP_USER}" -g "${APP_USER}" -m 0755 /etc/letsencrypt
+install -d -o "${APP_USER}" -g "${APP_USER}" -m 0755 /etc/letsencrypt/renewal-hooks
+install -d -o "${APP_USER}" -g "${APP_USER}" -m 0755 /etc/letsencrypt/renewal-hooks/pre
+install -d -o "${APP_USER}" -g "${APP_USER}" -m 0755 /etc/letsencrypt/renewal-hooks/post
+install -d -o "${APP_USER}" -g "${APP_USER}" -m 0755 /etc/letsencrypt/renewal-hooks/deploy
 install -d -o "${APP_USER}" -g "${APP_USER}" -m 0755 /var/log/letsencrypt
 install -d -o "${APP_USER}" -g "${APP_USER}" -m 0755 /var/lib/letsencrypt
+# Backstop: if /etc/letsencrypt already had subdirs from a previous install
+# (e.g. live/, accounts/), reassign ownership to the service user. Certbot
+# itself ignores ownership when called via sudo, so this doesn't break anything.
+chown -R "${APP_USER}:${APP_USER}" /etc/letsencrypt
 
 log "Installing sudoers rule for wizard-driven network changes"
 # The wizard's network step applies a new IP/hostname/gateway/DNS at the end

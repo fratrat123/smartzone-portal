@@ -14,20 +14,38 @@
       <code>http://&lt;new-ip&gt;</code> in a fresh tab.
     </div>
 
-    <label class="field">IP address (CIDR notation)
-      <input name="ip_cidr" required
-             value="{{ suggested_ip }}"
-             placeholder="10.20.30.40/24"
-             pattern="^[0-9.]+/[0-9]{1,2}$">
-      <span class="hint">Format: <code>address/prefix</code>, e.g.
-      <code>10.20.30.40/24</code>. The prefix is the subnet mask in CIDR form
-      (24 = 255.255.255.0).</span>
-    </label>
+    <div class="row" style="gap:12px">
+      <label class="field" style="flex:2">IP address
+        <input name="ip_address" required
+               value="{{ suggested_ip }}"
+               placeholder="10.20.30.40"
+               pattern="^[0-9]{1,3}(\.[0-9]{1,3}){3}$">
+        <span class="hint">Four numbers separated by dots, e.g. <code>10.20.30.40</code>.</span>
+      </label>
+      <label class="field" style="flex:2">Subnet mask
+        <input name="subnet_mask" required list="common-masks"
+               value="{{ suggested_mask }}"
+               placeholder="255.255.255.0"
+               pattern="^[0-9]{1,3}(\.[0-9]{1,3}){3}$">
+        <datalist id="common-masks">
+          <option value="255.255.255.0">/24 (most common)</option>
+          <option value="255.255.0.0">/16 (large internal)</option>
+          <option value="255.255.255.128">/25</option>
+          <option value="255.255.255.192">/26</option>
+          <option value="255.255.255.224">/27</option>
+          <option value="255.255.255.240">/28</option>
+          <option value="255.255.255.248">/29</option>
+          <option value="255.255.255.252">/30</option>
+        </datalist>
+        <span class="hint">Defaults to <code>255.255.255.0</code> for a typical office network.</span>
+      </label>
+    </div>
 
     <label class="field">Default gateway
       <input name="gateway" required
              value="{{ suggested_gateway }}"
-             placeholder="10.20.30.1">
+             placeholder="10.20.30.1"
+             pattern="^[0-9]{1,3}(\.[0-9]{1,3}){3}$">
       <span class="hint">The router on the same subnet that gives this box
       internet access. Required for Let's Encrypt cert renewal and SmartZone
       API calls.</span>

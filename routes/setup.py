@@ -408,7 +408,8 @@ def test_network():
     result = None
     if request.method == "POST":
         action = request.form.get("action", "dry-run")
-        ip_cidr = (request.form.get("ip_cidr") or "").strip()
+        ip_addr = (request.form.get("ip_address") or "").strip()
+        subnet_mask = (request.form.get("subnet_mask") or "").strip()
         gateway = (request.form.get("gateway") or "").strip()
         dns = (request.form.get("dns") or "").strip()
         hostname = (request.form.get("hostname") or "").strip() or "portal"
@@ -417,11 +418,22 @@ def test_network():
         def step(name: str, ok: bool, detail: str = "") -> None:
             steps.append({"name": name, "ok": ok, "detail": detail})
 
+        # Combine IP + mask into CIDR for netplan
+        ip_cidr = _combine_ip_mask(ip_addr, subnet_mask)
+        if not ip_cidr:
+            step("validate IP + mask", False,
+                 f"could not combine '{ip_addr}' + mask '{subnet_mask}' into a CIDR")
+            result = {"steps": steps, "summary": "invalid IP or subnet mask"}
+            return _render("test_network", "setup_test_network.html",
+                           form=request.form, result=result, current=_detect_current_network())
+        step("validate IP + mask", True,
+             f"{ip_addr} + {subnet_mask} -> {ip_cidr}")
+
         iface = _detect_primary_iface() or "eth0"
         step("detect primary interface", True, f"iface={iface}")
 
-        if not (ip_cidr and gateway):
-            step("validate inputs", False, "IP CIDR and gateway are required")
+        if not gateway:
+            step("validate inputs", False, "Gateway is required")
             result = {"steps": steps, "summary": "missing required inputs"}
             return _render("test_network", "setup_test_network.html",
                            form=request.form, result=result, current=_detect_current_network())
@@ -535,20 +547,25 @@ def test_network():
 @bp.route("/network", methods=["GET", "POST"])
 def network():
     if request.method == "POST":
+        ip = (request.form.get("ip_address") or "").strip()
+        mask = (request.form.get("subnet_mask") or "").strip()
+        cidr = _combine_ip_mask(ip, mask) or ""
         _save("network",
-              NET_IP_CIDR=(request.form.get("ip_cidr") or "").strip(),
+              NET_IP_CIDR=cidr,
               NET_GATEWAY=(request.form.get("gateway") or "").strip(),
               NET_DNS=(request.form.get("dns") or "").strip(),
               NET_HOSTNAME=(request.form.get("hostname") or "").strip() or "portal")
         return redirect(_next_url("network"))
 
     state = _wizard_state().get("network", {})
-    # Pre-fill: previous wizard answer wins; otherwise show the box's current
-    # config so an operator hitting "Continue" without edits keeps the same
-    # network. Helpful for re-runs.
     detected = _detect_current_network()
+    # Pre-fill IP and mask separately. If state already has CIDR, split it
+    # back into IP + mask. Otherwise use detected values.
+    existing_cidr = state.get("NET_IP_CIDR") or detected.get("ip_cidr") or "192.168.254.254/24"
+    pf_ip, pf_mask = _split_cidr(existing_cidr)
     return _render("network", "setup_network.html",
-                   suggested_ip=state.get("NET_IP_CIDR") or detected.get("ip_cidr", "192.168.254.254/24"),
+                   suggested_ip=pf_ip,
+                   suggested_mask=pf_mask or "255.255.255.0",
                    suggested_gateway=state.get("NET_GATEWAY") or detected.get("gateway", ""),
                    suggested_dns=state.get("NET_DNS") or detected.get("dns", "1.1.1.1 1.0.0.1"),
                    suggested_hostname=state.get("NET_HOSTNAME") or detected.get("hostname", "portal"))
@@ -575,6 +592,46 @@ def _detect_current_network() -> dict:
     except Exception:
         pass
     return out
+
+
+def _mask_to_prefix(mask: str) -> int | None:
+    """Subnet mask in dotted-decimal -> CIDR prefix length, or None on failure.
+    E.g. '255.255.255.0' -> 24, '255.255.0.0' -> 16."""
+    try:
+        import ipaddress
+        return ipaddress.IPv4Network(f"0.0.0.0/{mask}").prefixlen
+    except Exception:
+        return None
+
+
+def _prefix_to_mask(prefix: int) -> str:
+    """CIDR prefix length -> subnet mask in dotted-decimal. 24 -> '255.255.255.0'."""
+    import ipaddress
+    return str(ipaddress.IPv4Network(f"0.0.0.0/{prefix}", strict=False).netmask)
+
+
+def _split_cidr(cidr: str) -> tuple[str, str]:
+    """'10.20.30.40/24' -> ('10.20.30.40', '255.255.255.0'). Returns empty
+    strings if parsing fails."""
+    if "/" not in cidr:
+        return cidr, ""
+    ip, _, prefix_s = cidr.partition("/")
+    try:
+        return ip, _prefix_to_mask(int(prefix_s))
+    except (ValueError, Exception):
+        return ip, ""
+
+
+def _combine_ip_mask(ip: str, mask: str) -> str | None:
+    """('10.20.30.40', '255.255.255.0') -> '10.20.30.40/24'. None if invalid."""
+    ip = ip.strip()
+    mask = mask.strip()
+    if not ip:
+        return None
+    prefix = _mask_to_prefix(mask)
+    if prefix is None:
+        return None
+    return f"{ip}/{prefix}"
 
 
 @bp.route("/review", methods=["GET", "POST"])

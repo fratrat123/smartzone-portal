@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Setup wizard{% endblock %}
+{% block content %}
+<div class="card" style="max-width:640px;margin:40px auto">
+  <div class="card-header"><h2>Welcome to {{ brand_name }} setup</h2></div>
+  <div class="card-body">
+    <p>This wizard will collect the configuration the captive portal needs:
+      branding, storage, email, Google OAuth, SmartZone API + RADIUS, and TLS.</p>
+    <p class="muted">Wizard steps land in coming commits — this is the placeholder
+    welcome screen so the bootstrap-mode boot path is exercisable.</p>
+  </div>
+</div>
+{% endblock %}

@@ -467,20 +467,28 @@ def test_network():
         step("netplan binary", True, netplan)
 
         if action == "dry-run":
+            # Validate by running `netplan generate --root-dir <tempdir>` — that
+            # parses our config AND checks it against netplan's schema, without
+            # touching real /etc/netplan or /run/systemd/network/.
             with _tf.TemporaryDirectory() as td:
-                tmp_yaml = os.path.join(td, "01-test.yaml")
+                cfg_dir = os.path.join(td, "etc", "netplan")
+                os.makedirs(cfg_dir)
+                tmp_yaml = os.path.join(cfg_dir, "01-test.yaml")
                 with open(tmp_yaml, "w") as f:
                     f.write(yaml)
                 os.chmod(tmp_yaml, 0o600)
-                # netplan info doesn't take an arbitrary file path, so we
-                # just shell out and confirm the YAML parses by sanity-
-                # checking it as YAML via Python's loader.
                 try:
-                    import yaml as _y
-                    parsed = _y.safe_load(yaml)
-                    step("YAML parses", True, f"top-level keys: {list(parsed.keys())}")
+                    p = subprocess.run([netplan, "generate", "--root-dir", td],
+                                       capture_output=True, text=True, timeout=10)
+                    if p.returncode == 0:
+                        step("netplan validates schema", True,
+                             "config is valid netplan (parsed + schema-checked)")
+                    else:
+                        detail = (p.stderr.strip() or p.stdout.strip() or
+                                  f"rc={p.returncode} with no output")
+                        step("netplan validates schema", False, detail)
                 except Exception as e:
-                    step("YAML parses", False, f"{type(e).__name__}: {e}")
+                    step("netplan validates schema", False, f"{type(e).__name__}: {e}")
             result = {"steps": steps, "summary": "dry-run complete (no changes applied)"}
             return _render("test_network", "setup_test_network.html",
                            form=request.form, result=result, current=_detect_current_network())

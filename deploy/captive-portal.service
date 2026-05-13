@@ -21,11 +21,13 @@ Restart=always
 RestartSec=2
 
 # Hardening
-NoNewPrivileges=yes
+# NoNewPrivileges is intentionally NOT set — the setup wizard's "Network"
+# step shells out to `sudo netplan apply` / `sudo hostnamectl` (scoped via
+# /etc/sudoers.d/captive-portal) and NoNewPrivileges blocks SUID elevation.
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
-ReadWritePaths=/opt/captive-portal /var/log/captive-portal /etc/letsencrypt
+ReadWritePaths=/opt/captive-portal /var/log/captive-portal /etc/letsencrypt /etc/netplan
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes

@@ -2,36 +2,51 @@
 {% block title %}Setup complete{% endblock %}
 
 {% block content %}
-<div class="card" style="max-width:560px;margin:60px auto;text-align:center">
+<div class="card" style="max-width:620px;margin:60px auto">
   <div class="card-body" style="padding:32px">
-    <div style="font-size:3em;line-height:1;margin-bottom:8px">{% if cert_ok %}✓{% else %}!{% endif %}</div>
-    <h1 style="margin:0 0 12px">Setup complete</h1>
-    <p>Configuration saved to <code>{{ env_path }}</code>.</p>
+    <div style="text-align:center;font-size:3em;line-height:1;margin-bottom:8px">
+      {% if cert_ok %}✓{% else %}!{% endif %}
+    </div>
+    <h1 style="text-align:center;margin:0 0 12px">Setup complete</h1>
+    <p style="text-align:center">Configuration saved to <code>{{ env_path }}</code>.</p>
+
+    {% if new_ip %}
+      <div class="notice notice-info" style="margin:18px 0">
+        <strong>Reconnect at the new address.</strong>
+        <p style="margin:8px 0 0">This box is restarting at:</p>
+        <ul style="margin:6px 0 0">
+          <li>IP: <code>{{ new_ip }}</code></li>
+          <li>Hostname: <code>{{ new_hostname }}</code></li>
+        </ul>
+        <p style="margin:10px 0 0;font-size:0.9em">
+          Move your laptop to the new subnet and open
+          {% if base_url %}<a href="{{ base_url }}">{{ base_url }}</a>{% else %}<code>http://{{ new_ip }}</code>{% endif %}
+          once the box finishes restarting (about 30 seconds).
+        </p>
+      </div>
+    {% endif %}
 
     {% if cert_ok is defined %}
       <div class="notice {{ 'notice-success' if cert_ok else 'notice-warning' }}"
-           style="text-align:left;margin:18px 0">
+           style="margin:18px 0">
         <strong>TLS:</strong>
         {% if cert_ok %}
           {{ cert_msg }} Renewals run automatically via systemd timer.
         {% else %}
           {{ cert_msg|replace('\n', '<br>')|safe }}
           <p class="muted" style="margin:8px 0 0;font-size:0.9em">
-          You can still finish — the portal will bind plain HTTP on :8080 until
-          a cert is in place. To issue one manually after install:</p>
-          <pre style="background:var(--surface-elevated);padding:8px;border-radius:4px;font-size:0.85em;margin-top:6px">sudo certbot certonly --dns-cloudflare \
-  --dns-cloudflare-credentials /etc/letsencrypt/cloudflare.ini \
-  -d &lt;your-hostname&gt; -m &lt;email&gt; --agree-tos</pre>
+          Cert issuance happens from the box itself — if your setup network
+          doesn't have internet access, this is expected. After the box
+          reaches its new IP with working internet, re-run the wizard from
+          the admin UI to retry.</p>
         {% endif %}
       </div>
     {% endif %}
 
-    <p>The portal is restarting now. systemd will bring it back up in normal
-    mode within a few seconds.</p>
-    <p style="margin-top:24px">
-      <a href="/" class="btn btn-primary">Open portal</a>
+    <p class="muted" style="font-size:0.88em;text-align:center;margin-top:24px">
+      systemd is restarting the portal now. The browser tab below will stay
+      open — don't refresh until you've reconnected to the new IP.
     </p>
   </div>
 </div>
-<script>setTimeout(function(){ window.location = '/'; }, 5000);</script>
 {% endblock %}

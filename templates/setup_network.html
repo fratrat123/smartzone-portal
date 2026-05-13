@@ -1,0 +1,54 @@
+{% extends "setup_base.html" %}
+
+{% block step_body %}
+<form id="step-form" method="post" class="card">
+  <div class="card-body">
+    <p>Set this server's permanent network address. The change is applied
+    after you click <strong>Save and restart</strong> on the next step —
+    that's when you'll need to reconnect to the new IP.</p>
+
+    <div class="notice notice-warning" style="margin-bottom:16px">
+      <strong>Heads-up:</strong> when these settings are applied at the end
+      of the wizard, this browser session will drop. Move your laptop to the
+      same subnet as the new IP and open
+      <code>http://&lt;new-ip&gt;</code> in a fresh tab.
+    </div>
+
+    <label class="field">IP address (CIDR notation)
+      <input name="ip_cidr" required
+             value="{{ suggested_ip }}"
+             placeholder="10.20.30.40/24"
+             pattern="^[0-9.]+/[0-9]{1,2}$">
+      <span class="hint">Format: <code>address/prefix</code>, e.g.
+      <code>10.20.30.40/24</code>. The prefix is the subnet mask in CIDR form
+      (24 = 255.255.255.0).</span>
+    </label>
+
+    <label class="field">Default gateway
+      <input name="gateway" required
+             value="{{ suggested_gateway }}"
+             placeholder="10.20.30.1">
+      <span class="hint">The router on the same subnet that gives this box
+      internet access. Required for Let's Encrypt cert renewal and SmartZone
+      API calls.</span>
+    </label>
+
+    <label class="field">DNS servers
+      <input name="dns" required
+             value="{{ suggested_dns }}"
+             placeholder="1.1.1.1 1.0.0.1">
+      <span class="hint">Space-separated. Used for resolving SmartZone,
+      Google OAuth, and SMTP hostnames.</span>
+    </label>
+
+    <label class="field">Hostname
+      <input name="hostname" required
+             value="{{ suggested_hostname }}"
+             placeholder="portal"
+             pattern="^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*$">
+      <span class="hint">The Linux hostname (uname -n) for this box.
+      Short ("portal") or fully-qualified ("portal.school.local") both work.</span>
+    </label>
+  </div>
+</form>
+{% endblock %}

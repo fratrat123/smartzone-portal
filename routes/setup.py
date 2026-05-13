@@ -39,6 +39,7 @@ STEPS = [
     ("radius",         "RADIUS",            False),
     ("tls",            "TLS",               True),
     ("smartzone_wlan", "SmartZone WLAN",    False),
+    ("network",        "Network",           False),
     ("review",         "Review & finish",   False),
 ]
 
@@ -381,6 +382,51 @@ def smartzone_wlan():
     )
 
 
+@bp.route("/network", methods=["GET", "POST"])
+def network():
+    if request.method == "POST":
+        _save("network",
+              NET_IP_CIDR=(request.form.get("ip_cidr") or "").strip(),
+              NET_GATEWAY=(request.form.get("gateway") or "").strip(),
+              NET_DNS=(request.form.get("dns") or "").strip(),
+              NET_HOSTNAME=(request.form.get("hostname") or "").strip() or "portal")
+        return redirect(_next_url("network"))
+
+    state = _wizard_state().get("network", {})
+    # Pre-fill: previous wizard answer wins; otherwise show the box's current
+    # config so an operator hitting "Continue" without edits keeps the same
+    # network. Helpful for re-runs.
+    detected = _detect_current_network()
+    return _render("network", "setup_network.html",
+                   suggested_ip=state.get("NET_IP_CIDR") or detected.get("ip_cidr", "192.168.254.254/24"),
+                   suggested_gateway=state.get("NET_GATEWAY") or detected.get("gateway", ""),
+                   suggested_dns=state.get("NET_DNS") or detected.get("dns", "1.1.1.1 1.0.0.1"),
+                   suggested_hostname=state.get("NET_HOSTNAME") or detected.get("hostname", "portal"))
+
+
+def _detect_current_network() -> dict:
+    """Best-effort: read the current IP/gateway/DNS so the wizard can pre-fill.
+    Returns an empty dict if anything goes wrong (e.g. Windows dev)."""
+    import socket
+    out: dict[str, str] = {}
+    try:
+        out["hostname"] = socket.gethostname()
+    except Exception:
+        pass
+    # Primary IP via the "connect to a remote, read local socket" trick. No
+    # packets are actually sent because we use a UDP socket with no sendto.
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.5)
+        s.connect(("1.1.1.1", 1))
+        ip = s.getsockname()[0]
+        s.close()
+        out["ip_cidr"] = f"{ip}/24"
+    except Exception:
+        pass
+    return out
+
+
 @bp.route("/review", methods=["GET", "POST"])
 def review():
     state = _wizard_state()
@@ -392,17 +438,112 @@ def review():
 
 def _flatten_state(state: dict) -> dict[str, str]:
     """Collapse {step_key: {ENV: val, ...}, ...} into a flat {ENV: val} dict.
-    The TLS step's keys are stripped out — they don't go into .env directly,
-    they're consumed by _issue_tls_cert() which writes back TLS_CERT_FILE /
-    TLS_KEY_FILE pointing at certbot's output."""
+    Strips out keys that don't belong in .env: TLS-step credentials (consumed
+    by _issue_tls_cert), and NET_ values (consumed by _apply_network)."""
     flat: dict[str, str] = {}
-    tls_only = {"CLOUDFLARE_API_TOKEN", "TLS_HOSTNAME", "TLS_EMAIL"}
+    transient = {
+        "CLOUDFLARE_API_TOKEN", "TLS_HOSTNAME", "TLS_EMAIL",
+        "NET_IP_CIDR", "NET_GATEWAY", "NET_DNS", "NET_HOSTNAME",
+    }
     for step_data in state.values():
         for k, v in step_data.items():
-            if v is None or k in tls_only:
+            if v is None or k in transient:
                 continue
             flat[k] = str(v)
     return flat
+
+
+def _apply_network(state: dict) -> tuple[bool, str]:
+    """Write netplan YAML + apply it + set hostname.
+
+    Returns (ok, message). Failure is non-fatal — the wizard still saves .env
+    and restarts, but the message lands on the finished page so the operator
+    can see what happened.
+
+    The captive-portal user has scoped sudo NOPASSWD rules for `netplan
+    apply`, `hostnamectl set-hostname`, and `systemctl restart
+    systemd-networkd` — see deploy/install.sh.
+    """
+    import shutil
+    import subprocess
+
+    net = state.get("network", {})
+    ip_cidr = net.get("NET_IP_CIDR")
+    gateway = net.get("NET_GATEWAY")
+    dns = net.get("NET_DNS") or ""
+    hostname = net.get("NET_HOSTNAME") or "portal"
+    if not (ip_cidr and gateway):
+        return False, "Network values missing — skipping network change."
+
+    netplan = shutil.which("netplan")
+    if not netplan:
+        return False, "netplan not installed — network change skipped (Windows dev?)."
+
+    # We rewrite a single, dedicated netplan file so we don't fight with
+    # whatever else might be in /etc/netplan. The interface name is detected
+    # automatically (`eth0` on most Debian VMs, `ens18` on Proxmox, etc.).
+    iface = _detect_primary_iface() or "eth0"
+    dns_list = [d for d in dns.split() if d]
+    yaml = (
+        "# Managed by the captive portal setup wizard.\n"
+        "network:\n"
+        "  version: 2\n"
+        "  renderer: networkd\n"
+        "  ethernets:\n"
+        f"    {iface}:\n"
+        f"      addresses: [{ip_cidr}]\n"
+        "      routes:\n"
+        f"        - to: default\n"
+        f"          via: {gateway}\n"
+    )
+    if dns_list:
+        yaml += "      nameservers:\n        addresses: [" + ", ".join(dns_list) + "]\n"
+
+    cfg_path = "/etc/netplan/01-captive-portal.yaml"
+    try:
+        # 0600 — netplan requires this since 0.106+ (warning otherwise).
+        fd = os.open(cfg_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(yaml)
+    except Exception as e:
+        return False, f"Couldn't write {cfg_path}: {e}"
+
+    def _run(cmd: list[str]) -> tuple[int, str]:
+        try:
+            p = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            return p.returncode, (p.stdout + p.stderr).strip()
+        except Exception as e:
+            return -1, f"{type(e).__name__}: {e}"
+
+    rc, out = _run(["sudo", "-n", "/usr/sbin/netplan", "apply"])
+    if rc != 0:
+        return False, f"netplan apply failed: {out[-300:]}"
+
+    rc, out = _run(["sudo", "-n", "/usr/bin/hostnamectl", "set-hostname", hostname])
+    if rc != 0:
+        # Hostname is cosmetic — log but don't fail the whole network change.
+        current_app.logger.warning("hostnamectl set-hostname failed: %s", out)
+
+    return True, f"Network set to {ip_cidr} (gateway {gateway}); hostname {hostname}."
+
+
+def _detect_primary_iface() -> str | None:
+    """Read /sys/class/net to find the first non-loopback interface."""
+    try:
+        for name in sorted(os.listdir("/sys/class/net")):
+            if name == "lo":
+                continue
+            # Skip virtual/down interfaces if possible.
+            try:
+                with open(f"/sys/class/net/{name}/operstate") as f:
+                    state = f.read().strip()
+                if state in ("up", "unknown"):  # 'unknown' is normal for some
+                    return name
+            except OSError:
+                continue
+    except OSError:
+        return None
+    return None
 
 
 def _issue_tls_cert(state: dict) -> tuple[bool, str, dict[str, str]]:
@@ -464,14 +605,20 @@ def _issue_tls_cert(state: dict) -> tuple[bool, str, dict[str, str]]:
 
 
 def _finalize(flat: dict[str, str]):
-    """Generate FLASK_SECRET_KEY, issue TLS cert via certbot, write .env, set
-    SETUP_COMPLETE=true, then exit so systemd restarts in normal mode."""
+    """Save everything and trigger a restart at the new IP.
+
+    Order matters:
+      1. Issue TLS cert (still on the setup IP, but only if internet works
+         from it — best-effort).
+      2. Write .env.
+      3. Render the finished page so the browser receives it BEFORE we change
+         the network and lose the connection.
+      4. After the response goes out: apply netplan (browser dies), exit so
+         systemd restarts the portal in normal mode at the new IP.
+    """
     flat.setdefault("FLASK_SECRET_KEY", secrets.token_urlsafe(48))
     flat["SETUP_COMPLETE"] = "true"
 
-    # Cert issuance is best-effort: even if it fails the operator can fix TLS
-    # later and the rest of the portal still boots. We surface the result on
-    # the finished page.
     cert_ok, cert_msg, cert_env = _issue_tls_cert(_wizard_state())
     flat.update(cert_env)
 
@@ -481,15 +628,31 @@ def _finalize(flat: dict[str, str]):
         return _render("review", "setup_review.html", flat=flat,
                        error=f"Failed to write .env: {e}"), 500
 
+    state_snapshot = dict(_wizard_state())  # for the background thread
     session.pop("wizard", None)
-    threading.Timer(1.0, _exit_for_restart).start()
+
+    new_ip = state_snapshot.get("network", {}).get("NET_IP_CIDR", "").split("/")[0]
+    new_hostname = state_snapshot.get("network", {}).get("NET_HOSTNAME", "portal")
+    base_url = flat.get("PORTAL_BASE_URL", "")
+
+    def _after_response():
+        # Tiny delay so the HTTP response definitely makes it out the door.
+        time.sleep(1.5)
+        try:
+            _apply_network(state_snapshot)
+        except Exception:
+            current_app.logger.exception("network apply crashed")
+        # systemd Restart=always brings us back in normal mode.
+        os._exit(0)
+
+    threading.Thread(target=_after_response, name="finalize", daemon=True).start()
+
     return render_template("setup_finished.html",
                            env_path=str(path),
                            cert_ok=cert_ok,
-                           cert_msg=cert_msg)
+                           cert_msg=cert_msg,
+                           new_ip=new_ip,
+                           new_hostname=new_hostname,
+                           base_url=base_url)
 
 
-def _exit_for_restart():
-    current_app.logger.info("setup wizard: configuration saved, exiting for systemd restart")
-    time.sleep(0.5)
-    os._exit(0)

@@ -63,6 +63,19 @@ if [[ ! -f "${APP_DIR}/.env" ]]; then
     install -m 0640 -o "${APP_USER}" -g "${APP_USER}" "${APP_DIR}/.env.example" "${APP_DIR}/.env"
 fi
 
+log "Installing sudoers rule for wizard-driven network changes"
+# The wizard's network step applies a new IP/hostname/gateway/DNS at the end
+# of the flow. Scoped sudo only — no general root, just these three commands.
+install -d -m 0750 /etc/sudoers.d
+cat > /etc/sudoers.d/captive-portal <<EOF
+# Scoped sudo for the captive-portal setup wizard's network step.
+${APP_USER} ALL=(root) NOPASSWD: /usr/sbin/netplan apply
+${APP_USER} ALL=(root) NOPASSWD: /usr/bin/hostnamectl set-hostname *
+${APP_USER} ALL=(root) NOPASSWD: /bin/systemctl restart systemd-networkd
+EOF
+chmod 0440 /etc/sudoers.d/captive-portal
+visudo -cf /etc/sudoers.d/captive-portal >/dev/null
+
 log "Installing systemd unit"
 install -m 0644 "${APP_DIR}/deploy/captive-portal.service" "${SERVICE_FILE}"
 install -m 0755 "${APP_DIR}/deploy/certbot-reload-portal" /etc/letsencrypt/renewal-hooks/deploy/00-reload-captive-portal || true

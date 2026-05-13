@@ -83,21 +83,18 @@ if [[ ! -f "${APP_DIR}/.env" ]]; then
     install -m 0640 -o "${APP_USER}" -g "${APP_USER}" "${APP_DIR}/.env.example" "${APP_DIR}/.env"
 fi
 
-log "Granting service user write access to /etc/netplan and /etc/letsencrypt"
+log "Granting service user write access to /etc/netplan, /etc/letsencrypt, /var/{log,lib}/letsencrypt"
 # The wizard's network step writes /etc/netplan/01-captive-portal.yaml; the
-# TLS step writes /etc/letsencrypt/cloudflare.ini. Both directories default
-# to root-owned and root-writable, so the captive-portal user (which the
-# service runs as) gets EACCES on the file write — even with systemd's
-# ReadWritePaths set, the bind-mount only allows writes that the filesystem
-# permissions also allow.
-#
-# Change ownership rather than chmod a+w: keeps directories restricted but
-# lets the one service that should write there actually do so. certbot
-# still works because it runs as root (via sudo) and root ignores perms.
+# TLS step writes /etc/letsencrypt/cloudflare.ini and runs certbot which
+# wants to write logs to /var/log/letsencrypt and work files to
+# /var/lib/letsencrypt. Default ownership is root, and systemd's
+# ProtectSystem=strict blocks writes to /var unless we both:
+#   (a) own the directory at the filesystem level, and
+#   (b) list it in ReadWritePaths in captive-portal.service.
 install -d -o "${APP_USER}" -g "${APP_USER}" -m 0755 /etc/netplan
 install -d -o "${APP_USER}" -g "${APP_USER}" -m 0755 /etc/letsencrypt
-# Any pre-existing netplan files in there owned by root stay as-is (the
-# wizard only writes its own file 01-captive-portal.yaml).
+install -d -o "${APP_USER}" -g "${APP_USER}" -m 0755 /var/log/letsencrypt
+install -d -o "${APP_USER}" -g "${APP_USER}" -m 0755 /var/lib/letsencrypt
 
 log "Installing sudoers rule for wizard-driven network changes"
 # The wizard's network step applies a new IP/hostname/gateway/DNS at the end

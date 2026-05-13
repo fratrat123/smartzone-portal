@@ -513,10 +513,21 @@ def _apply_network(state: dict) -> tuple[bool, str]:
 
     cfg_path = "/etc/netplan/01-captive-portal.yaml"
     try:
-        # 0600 — netplan requires this since 0.106+ (warning otherwise).
-        fd = os.open(cfg_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        # Atomic write: tempfile + os.replace. Crucially this works even
+        # when the existing cfg_path is owned by a different user (e.g.
+        # written by root during install). os.replace only needs write
+        # permission on the directory, not on the target file.
+        import tempfile
+        fd, tmp = tempfile.mkstemp(
+            dir=os.path.dirname(cfg_path),
+            prefix=".captive-portal-",
+            suffix=".yaml.tmp",
+        )
         with os.fdopen(fd, "w") as f:
             f.write(yaml)
+        # 0600 — netplan emits a warning otherwise since v0.106.
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, cfg_path)
     except Exception as e:
         return False, f"Couldn't write {cfg_path}: {e}"
 
@@ -584,10 +595,18 @@ def _issue_tls_cert(state: dict) -> tuple[bool, str, dict[str, str]]:
     cf_creds = "/etc/letsencrypt/cloudflare.ini"
     try:
         os.makedirs("/etc/letsencrypt", exist_ok=True)
-        # 0600 — token has zone DNS-edit perms, treat it like a password.
-        fd = os.open(cf_creds, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        # Atomic write so we can overwrite a root-owned file from a previous
+        # install. 0600 — token has zone DNS-edit perms, treat as a password.
+        import tempfile
+        fd, tmp = tempfile.mkstemp(
+            dir=os.path.dirname(cf_creds),
+            prefix=".cloudflare-",
+            suffix=".ini.tmp",
+        )
         with os.fdopen(fd, "w") as f:
             f.write(f"dns_cloudflare_api_token = {token}\n")
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, cf_creds)
     except Exception as e:
         return False, f"Couldn't write {cf_creds}: {e}", {}
 

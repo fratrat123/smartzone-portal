@@ -11,12 +11,9 @@ __pycache__/
 .venv/
 venv/
 
-# Caddy
+# Stray binaries from earlier deployments (Caddy etc.) — not part of the project.
 caddy.exe
 caddy
-caddy_*
-# Caddy local data dir (certs etc.)
-.caddy/
 
 # Editors / IDEs
 .idea/

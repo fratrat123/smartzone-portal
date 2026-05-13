@@ -22,13 +22,14 @@ def send_verification_email(to_email: str, code: str, verify_url: str) -> bool:
         log.error("email_sender: SMTP not configured (SMTP_HOST / SMTP_FROM_EMAIL missing)")
         return False
 
+    brand = config.PORTAL_BRAND_NAME
     msg = EmailMessage()
     msg["From"] = formataddr((config.SMTP_FROM_NAME, config.SMTP_FROM_EMAIL))
     msg["To"] = to_email
-    msg["Subject"] = "Wi-Fi sign-in verification"
+    msg["Subject"] = f"{brand} sign-in verification"
 
     msg.set_content(
-        f"Your Wi-Fi sign-in code: {code}\n"
+        f"Your {brand} sign-in code: {code}\n"
         f"\n"
         f"Or click this link to verify automatically:\n"
         f"{verify_url}\n"
@@ -39,7 +40,7 @@ def send_verification_email(to_email: str, code: str, verify_url: str) -> bool:
     msg.add_alternative(
         f"""<!doctype html>
 <html><body style="font-family:-apple-system,BlinkMacSystemFont,system-ui,Segoe UI,Roboto,sans-serif;color:#222">
-<h2>Wi-Fi sign-in verification</h2>
+<h2>{brand} sign-in verification</h2>
 <p>Your verification code:</p>
 <p style="font-size:2em;font-family:ui-monospace,Menlo,monospace;letter-spacing:0.2em;background:#f4f4f4;padding:0.4em 0.6em;border-radius:6px;display:inline-block">{code}</p>
 <p>Or just <a href="{verify_url}">click here to verify</a> on the device you're connecting.</p>

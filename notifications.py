@@ -78,8 +78,9 @@ def notify_new_pending(*, mac: str, mac_display: str, requested_by_email: str | 
     user = requested_by_email or "(no portal sign-in yet)"
     queue_url = _portal_url("/admin/")
 
+    brand = config.PORTAL_BRAND_NAME
     slack_text = (
-        f":bell: New Wi-Fi access request\n"
+        f":bell: New {brand} access request\n"
         f"*Device:* {name}\n"
         f"*MAC:* `{mac_display}`\n"
         f"*Requested by:* {user}\n"
@@ -90,9 +91,9 @@ def notify_new_pending(*, mac: str, mac_display: str, requested_by_email: str | 
     def _build_email(recipient: str) -> tuple[str, str, str]:
         approve = _link(mac, recipient, "approve")
         deny = _link(mac, recipient, "deny")
-        subject = f"[Wi-Fi Portal] New request: {name}"
+        subject = f"[{brand}] New request: {name}"
         text_body = (
-            f"A new Wi-Fi access request is waiting for review.\n\n"
+            f"A new {brand} access request is waiting for review.\n\n"
             f"Device:       {name}\n"
             f"MAC:          {mac_display}\n"
             f"Requested by: {user}\n"
@@ -108,7 +109,7 @@ def notify_new_pending(*, mac: str, mac_display: str, requested_by_email: str | 
         )
         html_body = f"""<!doctype html>
 <html><body style="font-family:-apple-system,BlinkMacSystemFont,system-ui,Segoe UI,Roboto,sans-serif;color:#222;max-width:560px">
-<h2 style="margin-bottom:8px">New Wi-Fi access request</h2>
+<h2 style="margin-bottom:8px">New {brand} access request</h2>
 <p style="color:#555;margin-top:0">A device is waiting for review.</p>
 <table style="border-collapse:collapse;margin:12px 0">
   <tr><td style="color:#888;padding:2px 12px 2px 0">Device</td><td>{name}</td></tr>

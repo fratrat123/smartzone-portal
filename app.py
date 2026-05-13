@@ -16,7 +16,9 @@ from routes.portal import bp as portal_bp
 def create_app() -> Flask:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
     app = Flask(__name__)
-    # Caddy in front: trust X-Forwarded-{Proto,Host,For} so Flask knows it's behind HTTPS.
+    # If a reverse proxy / TLS terminator is in front, trust the forwarded
+    # headers so url_for() generates https:// URLs and request.remote_addr is
+    # the real client. Harmless when no proxy is in front.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_for=1)
 
     app.config["SECRET_KEY"] = config.SECRET_KEY
@@ -29,10 +31,21 @@ def create_app() -> Flask:
     app.register_blueprint(portal_bp)
     app.register_blueprint(admin_bp)
 
-    # Make `user` available in every template without explicit passing.
+    # Make user and branding available in every template without explicit passing.
     @app.context_processor
-    def inject_user():
-        return {"user": current_user()}
+    def inject_context():
+        return {
+            "user": current_user(),
+            "brand_name": config.PORTAL_BRAND_NAME,
+            "brand_mark": (config.PORTAL_BRAND_NAME or "?")[:1].upper(),
+            "support_email": config.PORTAL_SUPPORT_EMAIL,
+            "logo_url": config.PORTAL_LOGO_URL,
+            "email_placeholder": (
+                config.PORTAL_EMAIL_PLACEHOLDER
+                or (f"you@{config.GOOGLE_HOSTED_DOMAIN}" if config.GOOGLE_HOSTED_DOMAIN
+                    else "you@example.com")
+            ),
+        }
 
     @app.route("/")
     def index():

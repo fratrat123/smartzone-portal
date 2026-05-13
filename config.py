@@ -20,6 +20,20 @@ class Config:
     SECRET_KEY = os.environ["FLASK_SECRET_KEY"]
     PORTAL_BASE_URL = os.environ["PORTAL_BASE_URL"].rstrip("/")
 
+    # --- Branding ---------------------------------------------------------
+    # Shown on every page header, the OAuth/sign-in screen, and as the prefix
+    # in outbound email subjects. The wizard collects this on first run.
+    PORTAL_BRAND_NAME = os.getenv("PORTAL_BRAND_NAME", "Captive Portal")
+    # Optional: shown to end users as the "need help?" contact. Blank hides it.
+    PORTAL_SUPPORT_EMAIL = os.getenv("PORTAL_SUPPORT_EMAIL", "") or None
+    # Placeholder text for the email input on the portal login page. If left
+    # blank, derives one from GOOGLE_HOSTED_DOMAIN if set, else "you@example.com".
+    PORTAL_EMAIL_PLACEHOLDER = os.getenv("PORTAL_EMAIL_PLACEHOLDER", "") or None
+    # Optional override for the small logo mark in the header. URL or path
+    # under /static/. If blank, the template renders the first letter of
+    # PORTAL_BRAND_NAME in a colored tile.
+    PORTAL_LOGO_URL = os.getenv("PORTAL_LOGO_URL", "") or None
+
     SQLALCHEMY_DATABASE_URI = os.environ["DATABASE_URL"]
 
     RADIUS_LISTEN_HOST = os.getenv("RADIUS_LISTEN_HOST", "0.0.0.0")
@@ -49,7 +63,8 @@ class Config:
     SMTP_USER = os.getenv("SMTP_USER", "") or None
     SMTP_PASS = os.getenv("SMTP_PASS", "") or None
     SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", "")
-    SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "Wi-Fi Portal")
+    # Defaults to PORTAL_BRAND_NAME so outbound mail reads consistently.
+    SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME") or PORTAL_BRAND_NAME
     EMAIL_VERIFY_TTL_MINUTES = int(os.getenv("EMAIL_VERIFY_TTL_MINUTES", "15"))
 
     NOTIFY_SLACK_WEBHOOK_URL = os.getenv("NOTIFY_SLACK_WEBHOOK_URL", "") or None

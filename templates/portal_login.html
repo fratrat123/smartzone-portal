@@ -2,8 +2,12 @@
 {% block title %}Sign in{% endblock %}
 {% block content %}
   <div style="text-align:center;margin-bottom:32px">
-    <div style="display:inline-grid;place-items:center;width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#2563eb,#6366f1);color:#fff;font-size:1.4em;font-weight:700;margin-bottom:16px">H</div>
-    <h1 style="font-size:1.5em;margin:0 0 6px;font-weight:650">Hillman Wi-Fi</h1>
+    {% if logo_url %}
+      <img src="{{ logo_url }}" alt="" style="width:56px;height:56px;border-radius:14px;margin-bottom:16px">
+    {% else %}
+      <div style="display:inline-grid;place-items:center;width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#2563eb,#6366f1);color:#fff;font-size:1.4em;font-weight:700;margin-bottom:16px">{{ brand_mark }}</div>
+    {% endif %}
+    <h1 style="font-size:1.5em;margin:0 0 6px;font-weight:650">{{ brand_name }}</h1>
     <p class="muted" style="margin:0">Sign in to register this device</p>
   </div>
 
@@ -14,10 +18,10 @@
       {% endif %}
 
       <form method="post" action="{{ url_for('portal.email_send') }}">
-        <label class="field">School email
+        <label class="field">Email address
           <input name="email" type="email" required
                  autocapitalize="off" autocorrect="off" spellcheck="false"
-                 placeholder="you@hillmanschools.com"
+                 placeholder="{{ email_placeholder }}"
                  value="{{ prefill_email or '' }}"
                  autocomplete="email">
         </label>
@@ -30,7 +34,9 @@
     </div>
   </div>
 
+  {% if support_email %}
   <p class="muted" style="text-align:center;font-size:0.85em;margin-top:24px">
-    Need help? Contact your school IT.
+    Need help? <a href="mailto:{{ support_email }}">{{ support_email }}</a>
   </p>
+  {% endif %}
 {% endblock %}

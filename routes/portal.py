@@ -319,7 +319,7 @@ def email_verify_link():
 
     return render_template("portal_email_link_done.html",
                            ok=True,
-                           message="You're verified! Return to the Wi-Fi sign-in page on your device — it will continue automatically.")
+                           message="You're verified! Return to the sign-in page on your device — it will continue automatically.")
 
 
 def _try_verify_with_code(ev_id: int, code: str) -> tuple[bool, str | None]:

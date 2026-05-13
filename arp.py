@@ -31,7 +31,7 @@ def hostname_for_ip(ip: str) -> str | None:
     except (socket.herror, socket.gaierror, OSError) as e:
         log.debug("reverse DNS failed for %s: %s", ip, e)
         return None
-    # 'desktop-ctoquvu.hillmanschools.local' -> 'desktop-ctoquvu'
+    # e.g. 'desktop-ctoquvu.lan.example.org' -> 'desktop-ctoquvu'
     short = name.split(".", 1)[0]
     return short or None
 

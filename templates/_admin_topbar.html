@@ -1,7 +1,11 @@
 <header class="topbar">
   <div class="brand">
-    <span class="brand-mark">H</span>
-    Hillman Wi-Fi
+    {% if logo_url %}
+      <img src="{{ logo_url }}" alt="" class="brand-logo">
+    {% else %}
+      <span class="brand-mark">{{ brand_mark }}</span>
+    {% endif %}
+    {{ brand_name }}
   </div>
   <nav>
     <a href="{{ url_for('admin.queue') }}" class="{{ 'active' if active == 'queue' else '' }}">Queue</a>

@@ -17,6 +17,7 @@ SERVICE_FILE="/etc/systemd/system/captive-portal.service"
 PYTHON_BIN="/usr/bin/python3"
 
 log()  { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
+warn() { printf '\033[1;33m!! %s\033[0m\n' "$*" >&2; }
 fail() { printf '\033[1;31m!! %s\033[0m\n' "$*" >&2; exit 1; }
 
 [[ $EUID -eq 0 ]] || fail "Run as root (sudo)."

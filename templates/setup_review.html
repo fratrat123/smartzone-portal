@@ -1,0 +1,40 @@
+{% extends "setup_base.html" %}
+
+{% block step_body %}
+{% if error %}
+  <div class="notice notice-error" style="margin-bottom:16px">{{ error }}</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header"><h2>Review settings</h2></div>
+  <div class="card-body">
+    <p>Click <strong>Save and restart</strong> to write these values to
+    <code>.env</code>, mark setup complete, and restart the portal in normal
+    mode. A fresh <code>FLASK_SECRET_KEY</code> is generated automatically.</p>
+
+    <table class="data-list" style="margin-top:14px">
+      <thead><tr><th style="width:40%">Key</th><th>Value</th></tr></thead>
+      <tbody>
+      {% for key, value in flat.items()|sort %}
+        <tr>
+          <td><code>{{ key }}</code></td>
+          <td>
+            {% if 'PASS' in key or 'SECRET' in key or 'TOKEN' in key %}
+              <code class="muted">••••••••• ({{ value|length }} chars)</code>
+            {% else %}
+              <code>{{ value }}</code>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<form id="step-form" method="post"></form>
+{% endblock %}
+
+{% block next_button %}
+<button type="submit" form="step-form" class="btn btn-success">Save and restart</button>
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends "setup_base.html" %}
+{% set s = state.get("oauth", {}) %}
+
+{% block step_body %}
+<form id="step-form" method="post" class="card">
+  <div class="card-body">
+    <p>Google OAuth is used for admin sign-in (and as the user-facing auth on
+    real browsers; the email magic-link path covers iOS CNA).</p>
+
+    <details style="margin-bottom:14px">
+      <summary style="cursor:pointer">How to create the OAuth credentials</summary>
+      <ol class="muted" style="padding:10px 0 0 24px;font-size:0.9em;line-height:1.6">
+        <li>Open
+          <a href="https://console.cloud.google.com/apis/credentials" target="_blank">console.cloud.google.com → APIs &amp; Services → Credentials</a>.</li>
+        <li>Click <strong>Create credentials → OAuth client ID</strong>.</li>
+        <li>Application type: <strong>Web application</strong>.</li>
+        <li>Authorized redirect URI: <code>{{ redirect_uri }}</code></li>
+        <li>After creating, copy the <strong>Client ID</strong> and
+          <strong>Client secret</strong> into the fields below.</li>
+        <li>If you restrict to a Workspace domain, also configure the OAuth
+          consent screen with the same domain.</li>
+      </ol>
+    </details>
+
+    <label class="field">OAuth client ID
+      <input name="client_id" required
+             value="{{ s.GOOGLE_CLIENT_ID or '' }}"
+             placeholder="xxxxxxxx-xxxxxxxxxxxxxxxx.apps.googleusercontent.com">
+    </label>
+
+    <label class="field">OAuth client secret
+      <input name="client_secret" type="password" required autocomplete="off"
+             value="{{ s.GOOGLE_CLIENT_SECRET or '' }}"
+             placeholder="GOCSPX-...">
+    </label>
+
+    <label class="field">Workspace domain <span class="hint">(optional, strongly recommended)</span>
+      <input name="hosted_domain"
+             value="{{ s.GOOGLE_HOSTED_DOMAIN or '' }}"
+             placeholder="example.org">
+      <span class="hint">If set, only Google accounts in this Workspace can
+      sign in. Leave blank to allow any Google account (not recommended for
+      production).</span>
+    </label>
+  </div>
+</form>
+{% endblock %}

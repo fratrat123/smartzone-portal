@@ -1,0 +1,40 @@
+{% extends "setup_base.html" %}
+{% set s = state.get("branding", {}) %}
+
+{% block step_body %}
+<form id="step-form" method="post" class="card">
+  <div class="card-body">
+    <label class="field">Portal name
+      <input name="brand_name" required maxlength="64"
+             value="{{ s.PORTAL_BRAND_NAME or '' }}"
+             placeholder="Acme Wi-Fi">
+      <span class="hint">Shown in every page header and as the subject prefix
+      on outbound email.</span>
+    </label>
+
+    <label class="field">Portal URL <span class="hint">(https only)</span>
+      <input name="base_url" type="url" required
+             value="{{ s.PORTAL_BASE_URL or '' }}"
+             placeholder="https://portal.example.org">
+      <span class="hint">The hostname users will be redirected to by SmartZone.
+      Must match the TLS certificate you'll issue in the TLS step.</span>
+    </label>
+
+    <label class="field">Support email <span class="hint">(optional)</span>
+      <input name="support_email" type="email"
+             value="{{ s.PORTAL_SUPPORT_EMAIL or '' }}"
+             placeholder="it@example.org">
+      <span class="hint">Shown to end users on the portal sign-in page as a
+      "need help?" contact. Leave blank to hide.</span>
+    </label>
+
+    <label class="field">Email placeholder <span class="hint">(optional)</span>
+      <input name="email_placeholder"
+             value="{{ s.PORTAL_EMAIL_PLACEHOLDER or '' }}"
+             placeholder="you@example.org">
+      <span class="hint">Text shown in the email input on the sign-in page.
+      If blank, derives from the Google Workspace domain you'll set later.</span>
+    </label>
+  </div>
+</form>
+{% endblock %}

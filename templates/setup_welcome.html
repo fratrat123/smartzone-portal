@@ -1,13 +1,38 @@
-{% extends "base.html" %}
-{% block title %}Setup wizard{% endblock %}
-{% block content %}
-<div class="card" style="max-width:640px;margin:40px auto">
-  <div class="card-header"><h2>Welcome to {{ brand_name }} setup</h2></div>
+{% extends "setup_base.html" %}
+
+{% block step_body %}
+<div class="card">
   <div class="card-body">
-    <p>This wizard will collect the configuration the captive portal needs:
-      branding, storage, email, Google OAuth, SmartZone API + RADIUS, and TLS.</p>
-    <p class="muted">Wizard steps land in coming commits — this is the placeholder
-    welcome screen so the bootstrap-mode boot path is exercisable.</p>
+    <p>This wizard collects everything the captive portal needs to run:
+      branding, storage, email delivery, Google OAuth, SmartZone API access,
+      RADIUS shared secret, and TLS certificate setup.</p>
+
+    <p>What it does at the end:</p>
+    <ul>
+      <li>Writes your answers to <code>.env</code> in the project directory.</li>
+      <li>Sets <code>SETUP_COMPLETE=true</code> so the portal boots normally next time.</li>
+      <li>Restarts the service so the new configuration takes effect.</li>
+    </ul>
+
+    <p>Before you start, have these ready:</p>
+    <ul>
+      <li>The hostname you'll serve the portal on (e.g. <code>portal.example.org</code>)
+        and a DNS record pointing to this server.</li>
+      <li>SMTP relay details (host, port, optional credentials).</li>
+      <li>Google OAuth client ID + secret
+        (<a href="https://console.cloud.google.com/apis/credentials" target="_blank">console.cloud.google.com</a>).</li>
+      <li>SmartZone controller hostname, API service-user credentials, and API version.</li>
+      <li>A Cloudflare API token with DNS edit on the zone for your portal hostname.</li>
+    </ul>
+
+    <p class="muted">You can stop and resume — answers are kept in your browser
+    session as you go. Nothing is written to disk until the final review step.</p>
   </div>
+</div>
+{% endblock %}
+
+{% block step_nav %}
+<div class="row" style="margin-top:24px;justify-content:flex-end">
+  <a href="{{ next_url }}" class="btn btn-primary">Start →</a>
 </div>
 {% endblock %}

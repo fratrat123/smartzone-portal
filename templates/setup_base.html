@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Setup · {{ step_label }}{% endblock %}
+
+{% block content %}
+<div style="max-width:760px;margin:32px auto">
+
+  <header style="margin-bottom:24px">
+    <p class="muted" style="margin:0 0 6px;font-size:0.85em;letter-spacing:0.04em;text-transform:uppercase">
+      {{ brand_name }} setup · step {{ step_index + 1 }} of {{ step_total }}
+    </p>
+    <h1 style="margin:0;font-size:1.6em">{{ step_label }}</h1>
+  </header>
+
+  {# Progress bar — pure CSS, no JS. #}
+  <div style="display:flex;gap:4px;margin-bottom:28px">
+    {% for k, label, _ in steps %}
+      {% set is_done = loop.index0 < step_index %}
+      {% set is_now  = loop.index0 == step_index %}
+      <div title="{{ label }}" style="
+        flex:1;height:6px;border-radius:3px;
+        background:{% if is_done %}var(--success){% elif is_now %}var(--brand-primary){% else %}var(--border){% endif %};
+        opacity:{% if is_now %}1{% elif is_done %}0.9{% else %}0.5{% endif %}"></div>
+    {% endfor %}
+  </div>
+
+  {% block step_body %}{% endblock %}
+
+  {% block step_nav %}
+  <div class="row" style="margin-top:24px;justify-content:space-between">
+    {% if prev_url %}
+      <a href="{{ prev_url }}" class="btn">← Back</a>
+    {% else %}<span></span>{% endif %}
+    {% block next_button %}
+      <button type="submit" form="step-form" class="btn btn-primary">Continue →</button>
+    {% endblock %}
+  </div>
+  {% endblock %}
+
+</div>
+{% endblock %}

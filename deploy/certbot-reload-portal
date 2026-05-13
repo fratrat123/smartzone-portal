@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# certbot deploy-hook: tell gunicorn to gracefully reload so new cert is picked up.
+#
+# Drop this in /etc/letsencrypt/renewal-hooks/deploy/ (the installer does it).
+# certbot runs every script in that directory after a successful renewal.
+set -euo pipefail
+exec systemctl reload captive-portal.service

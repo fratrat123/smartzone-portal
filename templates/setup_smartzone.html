@@ -1,0 +1,81 @@
+{% extends "setup_base.html" %}
+{% set s = state.get("smartzone", {}) %}
+
+{% block step_body %}
+<form id="step-form" method="post" class="card">
+  <div class="card-body">
+    <p>SmartZone Public API credentials. The portal uses this to look up
+    client hostnames and to issue per-AP <strong>disconnect-client</strong>
+    calls after a decision.</p>
+
+    <details style="margin-bottom:14px">
+      <summary style="cursor:pointer">How to create a service user on SmartZone</summary>
+      <ol class="muted" style="padding:10px 0 0 24px;font-size:0.9em;line-height:1.6">
+        <li>SmartZone web UI → <strong>Administration → Admins and Roles</strong>.</li>
+        <li>Create a new admin with a dedicated username (e.g.
+          <code>captive-portal-api</code>).</li>
+        <li>Assign a role with <em>at least</em>:
+          <em>Client → View</em>, <em>Client → Manage</em> (for disconnect).</li>
+        <li>Enable API access for the account.</li>
+        <li>Use the credentials below.</li>
+      </ol>
+    </details>
+
+    <div class="row" style="gap:12px">
+      <label class="field" style="flex:2">SmartZone host
+        <input name="sz_host" required value="{{ s.SZ_HOST or '' }}"
+               placeholder="sz.example.org">
+        <span class="hint">Controller hostname or IP — must be reachable from
+        this server on the API port.</span>
+      </label>
+      <label class="field" style="flex:1">Port
+        <input name="sz_port" type="number" value="{{ s.SZ_PORT or '8443' }}">
+      </label>
+    </div>
+
+    <label class="field">API version
+      <select name="sz_api_version">
+        {% set chosen = s.SZ_API_VERSION or 'v11_1' %}
+        <option value="v11_1" {% if chosen == 'v11_1' %}selected{% endif %}>v11_1 (SmartZone 6.1.x)</option>
+        <option value="v12_0" {% if chosen == 'v12_0' %}selected{% endif %}>v12_0 (SmartZone 6.2.x)</option>
+        <option value="v13_0" {% if chosen == 'v13_0' %}selected{% endif %}>v13_0 (SmartZone 6.3.x)</option>
+        <option value="v13_1" {% if chosen == 'v13_1' %}selected{% endif %}>v13_1 (SmartZone 7.x)</option>
+      </select>
+      <span class="hint">Match your controller version. If unsure, the test
+      button below will tell you whether your choice works.</span>
+    </label>
+
+    <div class="row" style="gap:12px">
+      <label class="field" style="flex:1">Service username
+        <input name="sz_username" required value="{{ s.SZ_USERNAME or '' }}">
+      </label>
+      <label class="field" style="flex:1">Service password
+        <input name="sz_password" type="password" required autocomplete="off"
+               value="{{ s.SZ_PASSWORD or '' }}">
+      </label>
+    </div>
+
+    <label class="field" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+      <input name="sz_verify_tls" type="checkbox" value="1"
+             {% if (s.SZ_VERIFY_TLS or '').lower() == 'true' %}checked{% endif %}>
+      <span>Verify SmartZone TLS cert
+        <span class="hint">(uncheck if the controller uses a self-signed cert,
+        which is common for SZ)</span></span>
+    </label>
+
+    {% if test_result %}
+      <div class="notice {{ 'notice-success' if test_result.ok else 'notice-error' }}" style="margin-top:14px">
+        <strong>{{ 'Auth succeeded' if test_result.ok else 'Auth failed' }}.</strong>
+        {{ test_result.detail }}
+      </div>
+    {% endif %}
+  </div>
+</form>
+{% endblock %}
+
+{% block next_button %}
+<div class="row" style="gap:8px">
+  <button type="submit" form="step-form" name="action" value="test" class="btn">Test connection</button>
+  <button type="submit" form="step-form" name="action" value="next" class="btn btn-primary">Continue →</button>
+</div>
+{% endblock %}

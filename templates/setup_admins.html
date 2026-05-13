@@ -1,0 +1,22 @@
+{% extends "setup_base.html" %}
+{% set s = state.get("admins", {}) %}
+
+{% block step_body %}
+<form id="step-form" method="post" class="card">
+  <div class="card-body">
+    <p>Who's allowed to approve / deny devices on day one?</p>
+
+    <p class="muted">These are the <strong>bootstrap admins</strong> baked into
+    <code>.env</code>. Once the portal is running you can add more admins from
+    the admin UI (without re-editing the file). Bootstrap admins can only be
+    removed by re-running this wizard.</p>
+
+    <label class="field">Admin emails
+      <textarea name="admin_emails" required rows="4"
+                placeholder="alice@example.org&#10;bob@example.org">{{ s.ADMIN_EMAILS|replace(',', '\n') if s.ADMIN_EMAILS else '' }}</textarea>
+      <span class="hint">One email per line (or comma-separated). All must be
+      in the Workspace domain you set on the previous step.</span>
+    </label>
+  </div>
+</form>
+{% endblock %}

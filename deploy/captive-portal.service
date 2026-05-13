@@ -1,0 +1,47 @@
+[Unit]
+Description=Captive Portal (Flask + RADIUS + setup wizard)
+Documentation=https://github.com/your-org/captive-portal
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=captive-portal
+Group=captive-portal
+WorkingDirectory=/opt/captive-portal
+EnvironmentFile=/opt/captive-portal/.env
+ExecStart=/opt/captive-portal/.venv/bin/gunicorn -c gunicorn.conf.py app:app
+# Reload (SIGHUP) is how certbot's renewal hook tells gunicorn to pick up a
+# rotated cert. Gunicorn gracefully cycles workers and the new cert is loaded.
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Crash + setup-wizard "save and restart" both exit non-zero; systemd brings
+# us back automatically. RestartSec is short so the wizard's exit feels snappy.
+Restart=always
+RestartSec=2
+
+# Hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/captive-portal /var/log/captive-portal /etc/letsencrypt
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=yes
+
+# Capabilities — needed so we can bind 443 and 1812 without running as root.
+# setcap on the python interpreter is the alternative (used by install.sh);
+# with that in place these aren't strictly required, but they cost nothing.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=captive-portal
+
+[Install]
+WantedBy=multi-user.target

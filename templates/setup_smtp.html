@@ -1,0 +1,67 @@
+{% extends "setup_base.html" %}
+{% set s = state.get("smtp", {}) %}
+
+{% block step_body %}
+<form id="step-form" method="post" class="card">
+  <div class="card-body">
+    <p>The portal sends verification emails (sign-in codes / magic links) and
+    new-pending alerts to admins. Point it at an SMTP relay.</p>
+
+    <details style="margin-bottom:14px">
+      <summary style="cursor:pointer">Help: Google Workspace SMTP relay</summary>
+      <div class="muted" style="padding:10px 0 0;font-size:0.9em">
+        Use <code>smtp-relay.gmail.com:587</code> with no credentials if you
+        allow this server's IP in Google Admin Console → Apps → Google Workspace
+        → Gmail → Routing → SMTP relay. For SMTP AUTH instead, fill in user/pass
+        below.
+      </div>
+    </details>
+
+    <div class="row" style="gap:12px">
+      <label class="field" style="flex:2">SMTP host
+        <input name="smtp_host" required value="{{ s.SMTP_HOST or 'smtp-relay.gmail.com' }}">
+      </label>
+      <label class="field" style="flex:1">Port
+        <input name="smtp_port" type="number" value="{{ s.SMTP_PORT or '587' }}">
+      </label>
+    </div>
+
+    <label class="field">From address
+      <input name="smtp_from_email" type="email" required
+             value="{{ s.SMTP_FROM_EMAIL or '' }}"
+             placeholder="admin@example.org">
+      <span class="hint">Shown as the From: address on every email the portal sends.</span>
+    </label>
+
+    <label class="field">From name <span class="hint">(optional)</span>
+      <input name="smtp_from_name"
+             value="{{ s.SMTP_FROM_NAME or '' }}"
+             placeholder="(defaults to portal name)">
+    </label>
+
+    <div class="row" style="gap:12px">
+      <label class="field" style="flex:1">Username <span class="hint">(optional)</span>
+        <input name="smtp_user" value="{{ s.SMTP_USER or '' }}" autocomplete="off">
+      </label>
+      <label class="field" style="flex:1">Password <span class="hint">(optional)</span>
+        <input name="smtp_pass" type="password" value="" autocomplete="new-password"
+               placeholder="{% if s.SMTP_PASS %}(unchanged){% endif %}">
+      </label>
+    </div>
+
+    {% if test_result %}
+      <div class="notice {{ 'notice-success' if test_result.ok else 'notice-error' }}" style="margin-top:14px">
+        <strong>{{ 'Test passed' if test_result.ok else 'Test failed' }}.</strong>
+        {{ test_result.detail }}
+      </div>
+    {% endif %}
+  </div>
+</form>
+{% endblock %}
+
+{% block next_button %}
+<div class="row" style="gap:8px">
+  <button type="submit" form="step-form" name="action" value="test" class="btn">Test connection</button>
+  <button type="submit" form="step-form" name="action" value="next" class="btn btn-primary">Continue →</button>
+</div>
+{% endblock %}

@@ -1,0 +1,81 @@
+{% extends "setup_base.html" %}
+
+{% block step_body %}
+<div class="card">
+  <div class="card-body">
+    <p>This step is a <strong>checklist for SmartZone</strong>, not portal
+    config. Open the SmartZone web UI in another tab and apply the following.
+    The values below are pre-filled from your earlier answers — paste them
+    in exactly.</p>
+
+    <p class="muted">When you finish, click Continue to move to the final review
+    step. None of this is written to the portal — it's a one-time setup on the
+    controller.</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2>1. AAA Authentication Profile</h2></div>
+  <div class="card-body">
+    <p class="muted">Services &amp; Profiles → AAA Servers → Authentication → Create</p>
+    <dl class="kv">
+      <dt>Type</dt><dd>RADIUS</dd>
+      <dt>Primary Server IP</dt><dd><code>(this server's LAN IP)</code></dd>
+      <dt>Port</dt><dd><code>{{ radius_port }}</code></dd>
+      <dt>Shared Secret</dt><dd><code>{{ radius_secret }}</code></dd>
+    </dl>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2>2. Hotspot (WISPr) Profile</h2></div>
+  <div class="card-body">
+    <p class="muted">Services &amp; Profiles → Hotspots &amp; Portals → Hotspot (WISPr) → Create</p>
+    <dl class="kv">
+      <dt>Smart Client Support</dt><dd>None</dd>
+      <dt>Logon URL</dt><dd>External</dd>
+      <dt>Primary URL</dt><dd><code>{{ portal_logon_url }}</code></dd>
+      <dt>Redirected MAC Format</dt><dd>AA:BB:CC:DD:EE:FF</dd>
+      <dt>HTTPS Redirect</dt><dd>ON</dd>
+    </dl>
+
+    <p style="margin-top:14px"><strong>Walled Garden</strong> — add every line below
+    (one entry per row):</p>
+    <pre style="background:var(--surface-elevated);padding:12px;border-radius:6px;font-size:0.85em;overflow:auto">{{ portal_hostname }}
+*.google.com
+*.googleapis.com
+*.gstatic.com
+*.googleusercontent.com
+accounts.youtube.com
+gmail.com
+mail.google.com</pre>
+    <p class="muted" style="font-size:0.88em">Without these entries, OAuth and
+    email magic-link verification can't complete before the user is approved.</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2>3. WLAN</h2></div>
+  <div class="card-body">
+    <p class="muted">Wireless LANs → your zone → Create</p>
+    <dl class="kv">
+      <dt>Authentication Type</dt><dd>Hotspot (WISPr)</dd>
+      <dt>Method</dt><dd>MAC Address</dd>
+      <dt>MAC Authentication</dt><dd>OFF (use MAC as password)</dd>
+      <dt>MAC Address Format</dt><dd><code>{{ mac_format }}</code> (must match)</dd>
+      <dt>Encryption</dt><dd>None</dd>
+      <dt>Hotspot (WISPr) Portal</dt><dd>profile from step 2</dd>
+      <dt>Authentication Server</dt><dd>profile from step 1</dd>
+      <dt>RADIUS Options → Called Station ID</dt><dd><strong>AP MAC</strong> (not WLAN BSSID — required for CoA)</dd>
+      <dt>Advanced → Client Fingerprinting</dt><dd>ON (so device hostnames populate)</dd>
+      <dt>Advanced → Inactivity Timeout</dt><dd>raise from 120s default</dd>
+    </dl>
+  </div>
+</div>
+
+<form id="step-form" method="post" action="{{ next_url }}" style="display:none"></form>
+{% endblock %}
+
+{% block next_button %}
+<a href="{{ next_url }}" class="btn btn-primary">I've configured SmartZone — continue →</a>
+{% endblock %}

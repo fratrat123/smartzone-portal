@@ -1,0 +1,70 @@
+{% extends "setup_base.html" %}
+{% set s = state.get("tls", {}) %}
+{% set branding = state.get("branding", {}) %}
+
+{% block step_body %}
+<form id="step-form" method="post" class="card">
+  <div class="card-body">
+    <p>The portal handles its own TLS via Let's Encrypt with the
+    <strong>DNS-01</strong> challenge through Cloudflare. This means the box
+    never needs to be reachable on port 80 from the internet.</p>
+
+    <details style="margin-bottom:14px">
+      <summary style="cursor:pointer">How to create the Cloudflare API token</summary>
+      <ol class="muted" style="padding:10px 0 0 24px;font-size:0.9em;line-height:1.6">
+        <li>Open
+          <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank">dash.cloudflare.com → My Profile → API Tokens</a>.</li>
+        <li>Click <strong>Create Token</strong> → "Edit zone DNS" template.</li>
+        <li>Permissions: <code>Zone</code> → <code>DNS</code> → <code>Edit</code>
+          and <code>Zone</code> → <code>Zone</code> → <code>Read</code>.</li>
+        <li>Zone Resources: scope to just the zone that owns your portal
+          hostname (e.g. <code>example.org</code>).</li>
+        <li>Create → copy the token. You won't be able to see it again.</li>
+        <li>Paste it below — the wizard verifies it with Cloudflare before saving.</li>
+      </ol>
+    </details>
+
+    <label class="field">Cloudflare API token
+      <input name="cf_token" type="password" required autocomplete="off"
+             value="{{ s.CLOUDFLARE_API_TOKEN or '' }}"
+             placeholder="long opaque string">
+      <span class="hint">Stored in <code>/etc/letsencrypt/cloudflare.ini</code>
+      so certbot can complete the DNS-01 challenge during renewals.</span>
+    </label>
+
+    <label class="field">Portal hostname
+      <input name="tls_hostname" required
+             value="{{ s.TLS_HOSTNAME or branding.PORTAL_BASE_URL|default('')|replace('https://', '')|replace('http://', '')|trim('/') }}"
+             placeholder="portal.example.org">
+      <span class="hint">The hostname the cert will be issued for. Should match
+      the hostname in your Portal URL from the Branding step.</span>
+    </label>
+
+    <label class="field">Contact email <span class="hint">(for Let's Encrypt renewal alerts)</span>
+      <input name="tls_email" type="email" required
+             value="{{ s.TLS_EMAIL or branding.PORTAL_SUPPORT_EMAIL or '' }}"
+             placeholder="it@example.org">
+    </label>
+
+    {% if test_result %}
+      <div class="notice {{ 'notice-success' if test_result.ok else 'notice-error' }}" style="margin-top:14px">
+        <strong>{{ 'Token verified' if test_result.ok else 'Verification failed' }}.</strong>
+        {{ test_result.detail }}
+      </div>
+    {% endif %}
+
+    <p class="muted" style="margin-top:14px;font-size:0.88em">
+      The actual <code>certbot certonly --dns-cloudflare</code> run happens
+      during the final review step, after you've confirmed everything. We
+      don't issue a cert until then.
+    </p>
+  </div>
+</form>
+{% endblock %}
+
+{% block next_button %}
+<div class="row" style="gap:8px">
+  <button type="submit" form="step-form" name="action" value="test" class="btn">Verify token</button>
+  <button type="submit" form="step-form" name="action" value="next" class="btn btn-primary">Continue →</button>
+</div>
+{% endblock %}

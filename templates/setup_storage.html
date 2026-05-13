@@ -1,0 +1,48 @@
+{% extends "setup_base.html" %}
+{% set s = state.get("storage", {}) %}
+{% set is_mariadb = s.DATABASE_URL and not s.DATABASE_URL.startswith('sqlite') %}
+
+{% block step_body %}
+<form id="step-form" method="post" class="card">
+  <div class="card-body">
+    <p>Where should the portal store device records, audit log, and admin list?</p>
+
+    <label class="field" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
+      <input type="radio" name="backend" value="sqlite" {% if not is_mariadb %}checked{% endif %} style="margin-top:4px">
+      <span>
+        <strong>SQLite</strong> <span class="muted">(recommended)</span><br>
+        <span class="hint">Single file on disk, zero install. Plenty for school-scale
+        (hundreds of devices, several admins). Backups = copy one file.</span>
+      </span>
+    </label>
+
+    <label class="field" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin-top:14px">
+      <input type="radio" name="backend" value="mariadb" {% if is_mariadb %}checked{% endif %} id="mariadb-radio" style="margin-top:4px">
+      <span style="flex:1">
+        <strong>MariaDB / MySQL / Postgres</strong><br>
+        <span class="hint">Use if you already operate a database server and want
+        centralized backup/replication. Format: SQLAlchemy URL.</span>
+        <input name="database_url" id="db-url" style="margin-top:8px"
+               value="{{ s.DATABASE_URL if is_mariadb else '' }}"
+               placeholder="mysql+pymysql://portal:secret@127.0.0.1/captive_portal?charset=utf8mb4">
+      </span>
+    </label>
+  </div>
+</form>
+
+<script>
+  (function () {
+    const sqlite = document.querySelector('input[name="backend"][value="sqlite"]');
+    const mariadb = document.getElementById('mariadb-radio');
+    const url = document.getElementById('db-url');
+    function refresh() {
+      url.disabled = !mariadb.checked;
+      url.required = mariadb.checked;
+      url.style.opacity = mariadb.checked ? 1 : 0.5;
+    }
+    sqlite.addEventListener('change', refresh);
+    mariadb.addEventListener('change', refresh);
+    refresh();
+  })();
+</script>
+{% endblock %}

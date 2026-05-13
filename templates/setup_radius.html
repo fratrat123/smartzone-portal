@@ -1,0 +1,57 @@
+{% extends "setup_base.html" %}
+{% set s = state.get("radius", {}) %}
+
+{% block step_body %}
+<form id="step-form" method="post" class="card">
+  <div class="card-body">
+    <p>RADIUS configuration — this is the shared secret SmartZone will use
+    to talk to the portal's built-in RADIUS server, and the address it sends
+    CoA-Disconnect packets to.</p>
+
+    <label class="field">Shared secret
+      <input name="shared_secret" required
+             value="{{ s.RADIUS_SHARED_SECRET or suggested_secret }}">
+      <span class="hint">A long random string. We've pre-filled a freshly
+      generated one — copy it now; you'll paste it into the SmartZone AAA
+      Auth Profile on the SmartZone WLAN step. Ruckus reuses this same value
+      for CoA, so we set both to match.</span>
+    </label>
+
+    <div class="row" style="gap:12px">
+      <label class="field" style="flex:1">Listen address
+        <input name="listen_host" value="{{ s.RADIUS_LISTEN_HOST or '0.0.0.0' }}">
+        <span class="hint">0.0.0.0 = all interfaces.</span>
+      </label>
+      <label class="field" style="flex:1">Listen port
+        <input name="listen_port" type="number" value="{{ s.RADIUS_LISTEN_PORT or '1812' }}">
+      </label>
+    </div>
+
+    <label class="field">MAC address format <span class="hint">(must match the WLAN's setting)</span>
+      <select name="mac_format">
+        {% set chosen = s.RADIUS_MAC_FORMAT or 'lower_no_sep' %}
+        <option value="lower_no_sep" {% if chosen == 'lower_no_sep' %}selected{% endif %}>aabbccddeeff (lower, no separator)</option>
+        <option value="upper_no_sep" {% if chosen == 'upper_no_sep' %}selected{% endif %}>AABBCCDDEEFF (upper, no separator)</option>
+        <option value="lower_colon"  {% if chosen == 'lower_colon' %}selected{% endif %}>aa:bb:cc:dd:ee:ff (lower, colons)</option>
+        <option value="upper_colon"  {% if chosen == 'upper_colon' %}selected{% endif %}>AA:BB:CC:DD:EE:FF (upper, colons)</option>
+        <option value="lower_hyphen" {% if chosen == 'lower_hyphen' %}selected{% endif %}>aa-bb-cc-dd-ee-ff (lower, hyphens)</option>
+        <option value="upper_hyphen" {% if chosen == 'upper_hyphen' %}selected{% endif %}>AA-BB-CC-DD-EE-FF (upper, hyphens)</option>
+      </select>
+    </label>
+
+    <hr style="margin:18px 0;border:none;border-top:1px solid var(--border)">
+
+    <p class="muted" style="margin:0 0 12px">CoA (Change-of-Authorization) — the portal sends a Disconnect-Message to SmartZone so an approved device gets kicked and reassociates silently.</p>
+
+    <div class="row" style="gap:12px">
+      <label class="field" style="flex:2">CoA host <span class="hint">(usually the SmartZone controller)</span>
+        <input name="coa_host" value="{{ s.COA_HOST or '' }}"
+               placeholder="(defaults to SmartZone host)">
+      </label>
+      <label class="field" style="flex:1">CoA port
+        <input name="coa_port" type="number" value="{{ s.COA_PORT or '3799' }}">
+      </label>
+    </div>
+  </div>
+</form>
+{% endblock %}

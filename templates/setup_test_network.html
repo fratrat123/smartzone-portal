@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Network diagnostic{% endblock %}
+
+{% block content %}
+<div style="max-width:840px;margin:32px auto">
+  <h1>Network apply — diagnostic</h1>
+  <p class="muted">Standalone test for the wizard's network step. Enter values
+  and submit; every operation (YAML write, sudo netplan apply, sudo hostnamectl,
+  post-apply interface state) is shown with its return code and full output.</p>
+
+  <div class="card">
+    <div class="card-header"><h2>Current state</h2></div>
+    <div class="card-body">
+      <dl class="kv">
+        <dt>Hostname</dt><dd>{{ current.hostname or '(unknown)' }}</dd>
+        <dt>Detected IP</dt><dd><code>{{ current.ip_cidr or '(none)' }}</code></dd>
+      </dl>
+    </div>
+  </div>
+
+  <form method="post" class="card">
+    <div class="card-header"><h2>Test inputs</h2></div>
+    <div class="card-body">
+      <label class="field">IP address (CIDR)
+        <input name="ip_cidr" required
+               value="{{ form.ip_cidr if form else current.ip_cidr or '' }}"
+               placeholder="10.20.30.40/24">
+      </label>
+      <label class="field">Default gateway
+        <input name="gateway" required
+               value="{{ form.gateway if form else '' }}"
+               placeholder="10.20.30.1">
+      </label>
+      <label class="field">DNS servers <span class="hint">(space-separated)</span>
+        <input name="dns"
+               value="{{ form.dns if form else '1.1.1.1 1.0.0.1' }}"
+               placeholder="1.1.1.1 1.0.0.1">
+      </label>
+      <label class="field">Hostname
+        <input name="hostname"
+               value="{{ form.hostname if form else current.hostname or 'portal' }}">
+      </label>
+      <div class="row" style="gap:8px;margin-top:12px">
+        <button name="action" value="dry-run" class="btn">Dry run (validate YAML, don't apply)</button>
+        <button name="action" value="apply" class="btn btn-warning">Apply (writes /etc/netplan + runs netplan apply)</button>
+      </div>
+      <p class="hint" style="margin-top:10px">
+        <strong>Apply</strong> will change the box's network — your browser may
+        lose connection. Reconnect at the new IP afterwards.
+      </p>
+    </div>
+  </form>
+
+  {% if result %}
+    <div class="card" style="margin-top:18px">
+      <div class="card-header">
+        <h2>Result</h2>
+        <span class="meta">{{ result.summary }}</span>
+      </div>
+      <div class="card-body compact">
+        {% for s in result.steps %}
+          <div style="border-left:4px solid {{ 'var(--success)' if s.ok else 'var(--danger)' }};padding:8px 12px;margin-bottom:8px;background:var(--surface-elevated)">
+            <strong>{{ '✓' if s.ok else '✗' }} {{ s.name }}</strong>
+            {% if s.detail %}
+              <pre style="margin:6px 0 0;white-space:pre-wrap;word-break:break-word;font-size:0.85em;background:transparent;padding:0">{{ s.detail }}</pre>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+  <p style="margin-top:20px"><a href="{{ url_for('setup.welcome') }}" class="muted">← Back to wizard</a></p>
+</div>
+{% endblock %}

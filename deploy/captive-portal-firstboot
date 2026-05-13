@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# First-boot regen for the captive portal appliance.
+#
+# This runs ONCE on the recipient's hypervisor, before sshd starts, so the
+# appliance gets a fresh identity instead of inheriting the golden VM's.
+# Triggered by /etc/systemd/system/captive-portal-firstboot.service with
+# ConditionFirstBoot=yes (the unit also won't re-run on subsequent boots).
+#
+# Wiping happens in prep-for-export.sh on the golden VM; we just regenerate.
+set -euo pipefail
+
+log() { printf '\033[1;36m[firstboot]\033[0m %s\n' "$*" >&2; }
+
+log "regenerating /etc/machine-id"
+# systemd-machine-id-setup is idempotent — won't overwrite a non-empty file.
+# prep-for-export.sh truncates it so this regen actually does work.
+systemd-machine-id-setup
+# Keep dbus's machine-id in sync (some packages still look here).
+if [[ -e /var/lib/dbus/machine-id ]] || [[ -L /var/lib/dbus/machine-id ]]; then
+    ln -sf /etc/machine-id /var/lib/dbus/machine-id
+fi
+
+log "regenerating SSH host keys"
+# Only generate types that don't exist; prep-for-export.sh deletes them so
+# every recipient gets fresh keys. Skip DSA — deprecated.
+for type in rsa ecdsa ed25519; do
+    f="/etc/ssh/ssh_host_${type}_key"
+    if [[ ! -f "$f" ]]; then
+        ssh-keygen -q -N '' -t "$type" -f "$f"
+        log "  created $f"
+    fi
+done
+# Make sure sshd will accept the new keys.
+chmod 600 /etc/ssh/ssh_host_*_key
+chmod 644 /etc/ssh/ssh_host_*_key.pub
+
+log "disabling self for future boots"
+systemctl disable captive-portal-firstboot.service >/dev/null 2>&1 || true
+
+log "done"

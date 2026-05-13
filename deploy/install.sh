@@ -76,11 +76,20 @@ EOF
 chmod 0440 /etc/sudoers.d/captive-portal
 visudo -cf /etc/sudoers.d/captive-portal >/dev/null
 
-log "Installing systemd unit"
+log "Installing systemd units"
 install -m 0644 "${APP_DIR}/deploy/captive-portal.service" "${SERVICE_FILE}"
-install -m 0755 "${APP_DIR}/deploy/certbot-reload-portal" /etc/letsencrypt/renewal-hooks/deploy/00-reload-captive-portal || true
+install -m 0644 "${APP_DIR}/deploy/captive-portal-firstboot.service" \
+    /etc/systemd/system/captive-portal-firstboot.service
+install -m 0755 "${APP_DIR}/deploy/captive-portal-firstboot" \
+    /usr/local/sbin/captive-portal-firstboot
+install -d -m 0755 /etc/letsencrypt/renewal-hooks/deploy
+install -m 0755 "${APP_DIR}/deploy/certbot-reload-portal" \
+    /etc/letsencrypt/renewal-hooks/deploy/00-reload-captive-portal || true
 systemctl daemon-reload
 systemctl enable --now captive-portal.service
+# firstboot is *enabled* but won't run until prep-for-export.sh wipes the
+# machine-id (its ConditionFirstBoot triggers only on a clean machine-id).
+systemctl enable captive-portal-firstboot.service || true
 
 log "Done."
 echo

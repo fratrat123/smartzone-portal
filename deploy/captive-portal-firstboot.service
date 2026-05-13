@@ -1,0 +1,20 @@
+[Unit]
+Description=Captive Portal — first boot regen (SSH host keys, machine-id)
+Documentation=https://github.com/your-org/captive-portal
+DefaultDependencies=no
+# Must run before networking + ssh so a brand-new machine-id and host keys
+# are in place before anything else uses them.
+After=local-fs.target
+Before=network-pre.target sshd.service systemd-networkd.service
+Wants=network-pre.target
+ConditionFirstBoot=yes
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/captive-portal-firstboot
+# This unit disables itself at the end of its run, but ConditionFirstBoot also
+# prevents it from re-running.
+
+[Install]
+WantedBy=multi-user.target

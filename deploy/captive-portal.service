@@ -10,7 +10,7 @@ User=captive-portal
 Group=captive-portal
 WorkingDirectory=/opt/captive-portal
 EnvironmentFile=/opt/captive-portal/.env
-ExecStart=/opt/captive-portal/.venv/bin/gunicorn -c gunicorn.conf.py app:app
+ExecStart=/opt/captive-portal/.venv/bin/python3 -m gunicorn -c gunicorn.conf.py app:app
 # Reload (SIGHUP) is how certbot's renewal hook tells gunicorn to pick up a
 # rotated cert. Gunicorn gracefully cycles workers and the new cert is loaded.
 ExecReload=/bin/kill -HUP $MAINPID

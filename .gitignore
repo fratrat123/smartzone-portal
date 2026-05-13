@@ -1,5 +1,6 @@
 # Secrets and runtime data — never commit
 .env
+.bootstrap-secret
 *.db
 *.db-journal
 

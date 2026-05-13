@@ -11,8 +11,10 @@ The wizard is reachable in both modes:
 """
 from __future__ import annotations
 
+import logging
 import os
 import secrets
+import signal
 import sys
 import threading
 import time
@@ -635,14 +637,40 @@ def _finalize(flat: dict[str, str]):
     new_hostname = state_snapshot.get("network", {}).get("NET_HOSTNAME", "portal")
     base_url = flat.get("PORTAL_BASE_URL", "")
 
+    log = logging.getLogger(__name__)
+
     def _after_response():
-        # Tiny delay so the HTTP response definitely makes it out the door.
+        # Tiny delay so the HTTP response definitely makes it out the door
+        # before we tear down the process.
         time.sleep(1.5)
         try:
-            _apply_network(state_snapshot)
+            ok, msg = _apply_network(state_snapshot)
+            log.warning("wizard: network apply -> ok=%s msg=%s", ok, msg)
         except Exception:
-            current_app.logger.exception("network apply crashed")
-        # systemd Restart=always brings us back in normal mode.
+            log.exception("wizard: network apply crashed")
+
+        # Kill the gunicorn master so systemd restarts the *whole service*.
+        # os._exit only kills this worker — the master would just spawn a
+        # replacement and the new .env wouldn't get picked up by RADIUS/the
+        # cert loader. SIGTERM the parent (gunicorn master); systemd's
+        # Restart=always brings the whole service back, re-reading .env.
+        ppid = os.getppid()
+        try:
+            with open(f"/proc/{ppid}/comm", "r") as f:
+                parent_comm = f.read().strip()
+        except OSError:
+            parent_comm = ""
+        if "gunicorn" in parent_comm:
+            log.warning("wizard: signaling gunicorn master pid=%s to shut down", ppid)
+            try:
+                os.kill(ppid, signal.SIGTERM)
+            except OSError:
+                pass
+            # Give the master a moment to broadcast SIGTERM to siblings.
+            time.sleep(2)
+        # Final fallback: kill this worker so we never linger if the master
+        # didn't notice us. (In dev / `python app.py` mode, parent is the
+        # shell and we just do os._exit cleanly.)
         os._exit(0)
 
     threading.Thread(target=_after_response, name="finalize", daemon=True).start()

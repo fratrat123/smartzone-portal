@@ -26,6 +26,13 @@ worker_class = "gthread"
 timeout = 60
 graceful_timeout = 30
 
+# Import the app once in the master and fork workers from there. Critical so
+# all workers share the same FLASK_SECRET_KEY (in bootstrap mode the key is
+# ephemeral random; without preload, each worker generates its own and signed
+# session cookies break across workers — the wizard session would silently
+# disappear partway through).
+preload_app = True
+
 
 def on_starting(server):
     """Master-process startup. Only runs in normal mode (bootstrap mode has

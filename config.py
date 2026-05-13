@@ -70,11 +70,45 @@ def missing_required_keys() -> list[str]:
     return [k for k in REQUIRED_KEYS_FOR_NORMAL_MODE if not os.getenv(k, "").strip()]
 
 
+def _bootstrap_secret_key() -> str:
+    """Generate-once, persist-to-disk SECRET_KEY for bootstrap mode.
+
+    Why not just `secrets.token_urlsafe(48)` per-process? Because gunicorn
+    spawns multiple workers; if each generates its own random key, signed
+    session cookies break the moment a request hits a different worker. The
+    wizard's session state silently dies and the operator's input gets
+    thrown away with no error.
+
+    With preload_app=True in gunicorn.conf.py the master imports config
+    once and forks workers from there, so they inherit the same key. We
+    also persist to disk so a master restart (e.g. cert reload) doesn't
+    invalidate active sessions either.
+    """
+    path = ".bootstrap-secret"
+    try:
+        return open(path).read().strip() or _write_bootstrap_secret(path)
+    except FileNotFoundError:
+        return _write_bootstrap_secret(path)
+
+
+def _write_bootstrap_secret(path: str) -> str:
+    key = secrets.token_urlsafe(48)
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(key)
+    except OSError:
+        # Read-only filesystem? Whatever — still better to have a per-process
+        # key than crash. Bootstrap mode is short-lived anyway.
+        pass
+    return key
+
+
 class Config:
-    # SECRET_KEY: if absent (bootstrap mode), generate an ephemeral one so
-    # Flask can start. Wizard sessions won't survive a restart, which is fine —
-    # the wizard is short-lived. In normal mode the .env value is used.
-    SECRET_KEY = os.getenv("FLASK_SECRET_KEY") or secrets.token_urlsafe(48)
+    # In normal mode, FLASK_SECRET_KEY is in .env. In bootstrap mode it's
+    # absent; we generate-and-persist one to .bootstrap-secret so all gunicorn
+    # workers + master-restarts share it.
+    SECRET_KEY = os.getenv("FLASK_SECRET_KEY") or _bootstrap_secret_key()
 
     # Optional in bootstrap mode; the wizard collects it. Trailing slash is
     # stripped so url_for() builds clean URLs.

@@ -129,9 +129,20 @@ def landing():
 
 @bp.route("/portal/start")
 def start():
-    if not session.get("pending_mac"):
+    mac = session.get("pending_mac")
+    if not mac:
         return render_template("portal_no_mac.html"), 400
-    return render_template("portal_login.html")
+    # If the admin already denied this device, render the login page with
+    # the denial state pre-loaded. The page's polling script catches
+    # denials that happen while the user is mid-entry too — this just
+    # avoids showing the email form for a moment before polling kicks in.
+    denied_note = None
+    with SessionLocal() as s:
+        dev = s.get(Device, mac)
+    if dev and dev.status == "denied":
+        denied_note = dev.note or None
+    return render_template("portal_login.html", denied_note=denied_note,
+                           denied=bool(dev and dev.status == "denied"))
 
 
 @bp.route("/oauth/login")
@@ -549,7 +560,11 @@ def pending():
 
 @bp.route("/portal/pending/status")
 def pending_status():
-    """JSON endpoint for the pending page to poll. Returns the current status."""
+    """JSON endpoint for the portal pages to poll. Returns current status plus
+    the admin's note (so the user sees the reason on denial). The login page
+    polls this too, so a denial that happens while someone is still on the
+    email-entry screen surfaces immediately instead of waiting for them to
+    submit and reach the pending page."""
     mac = session.get("pending_mac")
     if not mac:
         return {"status": "unknown"}, 400
@@ -558,4 +573,5 @@ def pending_status():
     return {
         "status": dev.status if dev else "unknown",
         "mac": display_colon(mac),
+        "note": (dev.note if dev else None) or "",
     }

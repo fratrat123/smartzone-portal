@@ -28,10 +28,13 @@
         <span class="live-dot"></span>
         This page will update automatically when reviewed.
       </div>
-      <div id="status-denied" style="display:none;margin:24px 0 0;text-align:center">
+      <div id="status-denied" style="display:none;margin:24px 0 0;text-align:left">
         <div class="notice notice-error" style="margin:0">
-          <strong>Your request was declined.</strong><br>
-          <span style="font-size:0.92em">Contact your school IT if you think this is a mistake.</span>
+          <strong>Your request was declined.</strong>
+          <div id="denied-note" style="margin-top:8px;font-size:0.92em;display:none"></div>
+          <div style="margin-top:8px;font-size:0.92em">
+            Contact your school IT if you think this is a mistake.
+          </div>
         </div>
       </div>
       <div id="status-approved" style="display:none;margin:24px 0 0;text-align:center">
@@ -48,12 +51,26 @@
     const pendingBox = document.getElementById('status-pending');
     const deniedBox = document.getElementById('status-denied');
     const approvedBox = document.getElementById('status-approved');
+    const noteBox = document.getElementById('denied-note');
     let backoff = 3000;
 
     function show(which) {
       pendingBox.style.display  = (which === 'pending')  ? 'block' : 'none';
       deniedBox.style.display   = (which === 'denied')   ? 'block' : 'none';
       approvedBox.style.display = (which === 'approved') ? 'block' : 'none';
+    }
+
+    function showNote(note) {
+      if (note) {
+        noteBox.style.display = 'block';
+        // Plain-text escape — the note came from another admin and is shown
+        // to the requesting user, so don't render it as HTML.
+        noteBox.innerHTML = '<em>Note from admin:</em> ' +
+          note.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+      } else {
+        noteBox.style.display = 'none';
+        noteBox.textContent = '';
+      }
     }
 
     async function poll() {
@@ -68,6 +85,7 @@
           return;
         }
         if (data.status === 'denied') {
+          showNote(data.note);
           show('denied');
           return;  // stop polling — they've been told
         }

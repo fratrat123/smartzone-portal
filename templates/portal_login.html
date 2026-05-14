@@ -11,7 +11,7 @@
     <p class="muted" style="margin:0">Sign in to register this device</p>
   </div>
 
-  <div class="card">
+  <div class="card" id="login-card" style="{% if denied %}display:none{% endif %}">
     <div class="card-body">
       {% if error %}
         <div class="notice notice-error">{{ error }}</div>
@@ -35,9 +35,64 @@
     </div>
   </div>
 
+  <div id="denied-card" class="card" style="{% if not denied %}display:none{% endif %}">
+    <div class="card-body">
+      <div class="notice notice-error" style="margin:0">
+        <strong>Your device was denied.</strong>
+        <div id="denied-note" style="margin-top:8px;font-size:0.92em;{% if not denied_note %}display:none{% endif %}">
+          {% if denied_note %}<em>Note from admin:</em> {{ denied_note }}{% endif %}
+        </div>
+        <div style="margin-top:8px;font-size:0.92em">
+          Contact your school IT if you think this is a mistake.
+        </div>
+      </div>
+    </div>
+  </div>
+
   {% if support_email %}
   <p class="muted" style="text-align:center;font-size:0.85em;margin-top:24px">
     Need help? <a href="mailto:{{ support_email }}">{{ support_email }}</a>
   </p>
   {% endif %}
+
+  <script>
+    // Poll device status so the user sees a denial immediately even if they
+    // were typing in the email box when the admin clicked Deny. The pending
+    // page does the same — we just share the endpoint.
+    (function () {
+      const loginCard = document.getElementById('login-card');
+      const deniedCard = document.getElementById('denied-card');
+      const noteBox = document.getElementById('denied-note');
+      let backoff = 4000;
+
+      async function poll() {
+        try {
+          const r = await fetch('{{ url_for("portal.pending_status") }}', { cache: 'no-store' });
+          if (!r.ok) throw new Error('http ' + r.status);
+          const d = await r.json();
+          backoff = 4000;
+          if (d.status === 'denied') {
+            loginCard.style.display = 'none';
+            deniedCard.style.display = 'block';
+            if (d.note) {
+              noteBox.style.display = 'block';
+              noteBox.innerHTML = '<em>Note from admin:</em> ' +
+                d.note.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+            }
+            return;  // stop polling
+          }
+          if (d.status === 'approved') {
+            // Approved directly from the MAC (no email needed) — just reload
+            // so the user lands on the "already approved" / connected screen.
+            location.reload();
+            return;
+          }
+        } catch (_) {
+          backoff = Math.min(backoff * 2, 20000);
+        }
+        setTimeout(poll, backoff);
+      }
+      setTimeout(poll, backoff);
+    })();
+  </script>
 {% endblock %}

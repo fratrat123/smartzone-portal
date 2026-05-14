@@ -15,7 +15,7 @@ import threading
 import urllib.request
 
 from action_tokens import make_token
-from config import config
+from config import config, public_url
 
 log = logging.getLogger(__name__)
 
@@ -62,15 +62,11 @@ def _smtp_send(to_email: str, subject: str, text_body: str, html_body: str) -> N
         log.warning("notifications: email to %s failed: %s", to_email, e)
 
 
-def _portal_url(path: str = "/admin/") -> str:
-    return config.PORTAL_BASE_URL.rstrip("/") + path
-
-
 def _link(mac: str, recipient_email: str, action: str,
           duration_seconds: int | None = None) -> str:
     token = make_token(mac, recipient_email, action,
                        duration_seconds=duration_seconds)
-    return _portal_url(f"/admin/link/{token}")
+    return public_url(f"/admin/link/{token}")
 
 
 def notify_new_pending(*, mac: str, mac_display: str, requested_by_email: str | None,
@@ -79,7 +75,7 @@ def notify_new_pending(*, mac: str, mac_display: str, requested_by_email: str | 
     """Notify admins that a new device is awaiting approval. Non-blocking."""
     name = friendly_name or hostname or "(unnamed device)"
     user = requested_by_email or "(no portal sign-in yet)"
-    queue_url = _portal_url("/admin/")
+    queue_url = public_url("/admin/")
 
     brand = config.PORTAL_BRAND_NAME
     slack_text = (

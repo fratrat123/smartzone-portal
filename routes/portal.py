@@ -20,7 +20,7 @@ from flask import Blueprint, abort, redirect, render_template, request, session,
 from sqlalchemy import select
 
 from arp import hostname_for_ip, mac_for_ip
-from config import config
+from config import config, public_url
 from db import Device, EmailVerification, SessionLocal, audit
 from device_types import DEVICE_TYPES, DEVICE_TYPES_BY_KEY, infer_device_type
 from email_sender import send_verification_email
@@ -255,7 +255,7 @@ def email_send():
 
     session["ev_id"] = ev_id
 
-    verify_url = config.PORTAL_BASE_URL + url_for("portal.email_verify_link", token=token)
+    verify_url = public_url(url_for("portal.email_verify_link", token=token))
     sent = send_verification_email(email, code, verify_url)
     if not sent:
         return render_template(

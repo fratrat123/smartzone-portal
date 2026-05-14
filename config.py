@@ -179,3 +179,27 @@ class Config:
 
 
 config = Config()
+
+
+def public_url(path: str = "/") -> str:
+    """Build a public URL for the portal, suitable for embedding in emails
+    or anything else that needs an absolute URL outside of a Flask request.
+
+    Downgrades https → http when there's no real TLS cert in place, so links
+    don't point at a 443 that has nothing listening. Once certbot lands a
+    cert, the same code produces the https URLs operators expect.
+
+    Inside a Flask request, prefer Flask's `url_for(..., _external=True)` —
+    it picks up the actual incoming scheme via ProxyFix. This helper is for
+    background-thread / non-request contexts (email send, notification
+    threads)."""
+    base = (config.PORTAL_BASE_URL or "").rstrip("/")
+    if base.startswith("https://"):
+        have_tls = bool(
+            config.TLS_CERT_FILE and config.TLS_KEY_FILE
+            and os.path.exists(config.TLS_CERT_FILE)
+            and os.path.exists(config.TLS_KEY_FILE)
+        )
+        if not have_tls:
+            base = "http://" + base[len("https://"):]
+    return base + path

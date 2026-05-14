@@ -353,9 +353,16 @@ def queue_status():
 @bp.route("/device/<mac>", methods=["GET", "POST"])
 @admin_required
 def device(mac):
+    log = logging.getLogger(__name__)
+    if request.method == "POST":
+        log.info("device POST: mac=%s action=%s actor=%s form_keys=%s",
+                 mac, request.form.get("action"),
+                 (current_user() or {}).get("email"),
+                 list(request.form.keys()))
     with SessionLocal() as s:
         dev = s.get(Device, mac)
         if not dev:
+            log.warning("device POST: row not found for mac=%s", mac)
             abort(404)
 
         if request.method == "POST":

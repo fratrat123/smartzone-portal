@@ -37,10 +37,32 @@ def hostname_for_ip(ip: str) -> str | None:
 
 
 def mac_for_ip(ip: str) -> str | None:
-    """Return MAC for the given IPv4 address as seen in the local ARP table, or None."""
+    """Return MAC for the given IPv4 address as seen in the local ARP table, or None.
+
+    Prefers `ip neigh` (always available on modern Linux, no DNS lookups, fast).
+    Falls back to `arp -n` (numeric — critical, plain `arp -a` does reverse-DNS
+    on every entry and times out on networks with non-resolving hosts).
+    """
+    # Modern path: `ip neigh show <addr>`. Output like:
+    #   10.30.21.21 dev ens192 lladdr f0:20:ff:e8:0f:ad REACHABLE
     try:
         out = subprocess.check_output(
-            ["arp", "-a"],
+            ["ip", "neigh", "show", ip],
+            text=True,
+            timeout=3,
+            stderr=subprocess.DEVNULL,
+        )
+        m = _MAC_RE.search(out)
+        if m:
+            return m.group(0)
+    except Exception as e:
+        log.debug("ip neigh lookup failed: %s", e)
+
+    # Fallback: `arp -n` (numeric, no DNS). Lines look like:
+    #   10.30.21.21              ether   f0:20:ff:e8:0f:ad   C  ens192
+    try:
+        out = subprocess.check_output(
+            ["arp", "-n"],
             text=True,
             timeout=3,
             stderr=subprocess.DEVNULL,
@@ -50,9 +72,9 @@ def mac_for_ip(ip: str) -> str | None:
         return None
 
     for line in out.splitlines():
-        # Windows: "  10.30.21.21           f0-20-ff-e8-0f-ad     dynamic"
-        # Linux:   "? (10.30.21.21) at f0:20:ff:e8:0f:ad [ether] on eth0"
-        if ip in line:
+        # Match only the IP at the start of the line to avoid substring hits
+        # (e.g. '10.30.21.21' matching inside '10.30.21.210').
+        if line.split(maxsplit=1)[:1] == [ip]:
             m = _MAC_RE.search(line)
             if m:
                 return m.group(0)

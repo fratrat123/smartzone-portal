@@ -22,7 +22,6 @@ from pyrad.packet import AuthPacket, AccessAccept, AccessReject, AccessRequest
 from config import config
 from db import Device, DeviceSsidSeen, SessionLocal, audit
 from macfmt import canonical
-from notifications import notify_new_pending
 from smartzone import sz_client
 
 log = logging.getLogger(__name__)
@@ -118,26 +117,18 @@ class MacAuthServer:
                     dev.hostname = hostname
                 _touch_seen(s, mac, ssid_name, ap_mac, dev, now)
                 audit(s, "radius_reject", mac=mac, details=f"new pending; ssid={ssid_name}")
-                _notify_args = (mac, hostname, ssid_name)
-                _is_new_pending = True
             else:
                 _touch_seen(s, mac, ssid_name, ap_mac, dev, now)
                 audit(s, "radius_reject", mac=mac, details=f"status={dev.status}; ssid={ssid_name}")
-                _is_new_pending = False
             s.commit()
 
         log.info("REJECT %s (ssid=%s)", mac, ssid_name)
-        if _is_new_pending:
-            # First time we've seen this MAC — admins get pinged. Fire-and-forget.
-            notify_new_pending(
-                mac=mac,
-                mac_display=":".join(mac[i:i + 2] for i in range(0, 12, 2)).upper(),
-                requested_by_email=None,
-                friendly_name=None,
-                hostname=_notify_args[1],
-                device_type=None,
-                ssid=_notify_args[2],
-            )
+        # Note: we DO NOT email admins here, even on first sighting. A device
+        # joining the SSID is meaningless on its own — the user hasn't shown
+        # up at the portal, signed in, or even said this is their device.
+        # The admin email goes out later from routes.portal.register() once
+        # the user has authenticated and submitted a real request with their
+        # email + device type + friendly name.
         return self._reply(pkt, addr, AccessReject)
 
     def _reply(self, pkt: AuthPacket, addr, code: int):

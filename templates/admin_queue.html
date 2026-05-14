@@ -140,6 +140,10 @@
             <button name="bulk_action" value="approve" class="btn btn-sm btn-success">Approve selected</button>
             <button name="bulk_action" value="deny" class="btn btn-sm btn-danger">Deny selected</button>
             <button name="bulk_action" value="ignore" class="btn btn-sm">Ignore selected</button>
+            <button name="bulk_action" value="delete" class="btn btn-sm btn-danger"
+                    onclick="return confirm('Delete selected device records? They will be removed from the database. Audit log entries are kept.');">
+              Delete selected
+            </button>
           </div>
         </div>
       {% endif %}

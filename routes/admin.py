@@ -201,6 +201,21 @@ def device(mac):
             note = (request.form.get("note") or "").strip()[:1000] or None
             actor = current_user()["email"]
 
+            if action == "delete":
+                # Remove the Device row and its DeviceSsidSeen rows. AuditLog
+                # entries are intentionally kept — they reference the MAC by
+                # string so the historical record survives the row going away.
+                s.execute(
+                    DeviceSsidSeen.__table__.delete().where(DeviceSsidSeen.mac == mac)
+                )
+                s.delete(dev)
+                # Audit the deletion in a fresh session before commit so even
+                # if the delete fails we keep the intent recorded.
+                audit(s, "delete", mac=mac, actor=actor,
+                      details=f"prev_status={dev.status} {note or ''}".strip())
+                s.commit()
+                return redirect(url_for("admin.queue"))
+
             if action in ("approve", "deny", "ignore", "reset"):
                 now = datetime.now(timezone.utc)
                 if action == "approve":
@@ -292,7 +307,7 @@ def bulk():
     """Apply one action to multiple selected MACs from the queue."""
     action = request.form.get("bulk_action")
     macs = request.form.getlist("mac")
-    if not macs or action not in ("approve", "deny", "ignore"):
+    if not macs or action not in ("approve", "deny", "ignore", "delete"):
         return redirect(url_for("admin.queue"))
 
     actor = current_user()["email"]
@@ -308,6 +323,14 @@ def bulk():
             dev = s.get(Device, mac)
             if not dev:
                 continue
+            if action == "delete":
+                s.execute(
+                    DeviceSsidSeen.__table__.delete().where(DeviceSsidSeen.mac == mac)
+                )
+                audit(s, "delete", mac=mac, actor=actor,
+                      details=f"bulk prev_status={dev.status}")
+                s.delete(dev)
+                continue   # no kick to send; row's gone
             if action == "approve":
                 dev.status = "approved"
                 dev.decided_by_email = actor

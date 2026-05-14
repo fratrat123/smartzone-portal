@@ -210,19 +210,57 @@ curl -sk -X POST "https://&lt;sz-host&gt;:8443/wsg/api/public/v11_1/clients/disc
     refresh();
   })();
 
-  // Copy buttons — read the target element's textContent (or data-secret if set).
+  // Copy buttons — read the target's data-secret (if set) or textContent.
+  // navigator.clipboard only works in secure contexts (HTTPS / localhost), so
+  // we fall back to the legacy textarea + execCommand("copy") trick on HTTP.
+  // Without that fallback, the button silently fails and the user pastes
+  // whatever was already in their clipboard. Spent way too long debugging
+  // RADIUS shared-secret mismatches because of this — make it loud now.
+  async function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      try { await navigator.clipboard.writeText(text); return true; }
+      catch (_) { /* fall through to legacy */ }
+    }
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+
   document.querySelectorAll('[data-copy]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const target = document.querySelector(btn.dataset.copy);
       if (!target) return;
       const text = target.dataset.secret || target.textContent.trim();
-      navigator.clipboard.writeText(text).then(() => {
-        const original = btn.textContent;
+      const ok = await copyText(text);
+      const original = btn.textContent;
+      if (ok) {
         btn.textContent = 'Copied!';
-        setTimeout(() => { btn.textContent = original; }, 1200);
-      }).catch(() => {
-        btn.textContent = '(use Ctrl-C)';
-      });
+        btn.style.background = 'var(--success-bg)';
+      } else {
+        // Copy actually failed — make this obvious. Reveal the value and
+        // tell the operator to copy it manually, so they don't paste stale
+        // clipboard contents into a shared-secret field.
+        btn.textContent = 'COPY FAILED — select manually';
+        btn.style.background = 'var(--danger-bg)';
+        if (target.id === 'radius-secret' && target.dataset.secret) {
+          target.textContent = target.dataset.secret;
+          target.style.filter = 'none';
+        }
+        alert('Copy failed (browser blocks clipboard on plain HTTP).\n\n'
+              + 'The value is now visible — select it and Ctrl+C manually.');
+      }
+      setTimeout(() => {
+        btn.textContent = original;
+        btn.style.background = '';
+      }, 2500);
     });
   });
 </script>

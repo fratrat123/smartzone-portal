@@ -133,8 +133,36 @@ def notify_new_pending(*, mac: str, mac_display: str, requested_by_email: str | 
 
     def _fire():
         _send_slack(slack_text)
-        for recipient in config.NOTIFY_EMAILS:
+        for recipient in _resolve_recipients():
             subject, text_body, html_body = _build_email(recipient)
             _smtp_send(recipient, subject, text_body, html_body)
 
     threading.Thread(target=_fire, name="notify", daemon=True).start()
+
+
+def _resolve_recipients() -> list[str]:
+    """Build the full notification recipient list at send time.
+
+    Admins always get notifications. Plus any addresses in NOTIFY_EMAILS (env,
+    seeded by the wizard) and any rows in extra_notify_recipients (live-
+    editable from /admin/notifications). De-duplicated and lowercased."""
+    emails: set[str] = set()
+
+    # Bootstrap admins from .env
+    emails.update(e.lower() for e in config.ADMIN_EMAILS if e)
+
+    # NOTIFY_EMAILS from .env (legacy / wizard-seeded extras)
+    emails.update(e.lower() for e in config.NOTIFY_EMAILS if e)
+
+    # Admins added through the UI + extra recipients added through the UI.
+    # Lazy import to avoid forcing db on bootstrap mode.
+    try:
+        from db import Admin, ExtraNotifyRecipient, SessionLocal
+        with SessionLocal() as s:
+            emails.update(a.email.lower() for a in s.query(Admin).all() if a.email)
+            emails.update(r.email.lower() for r in s.query(ExtraNotifyRecipient).all() if r.email)
+    except Exception:
+        # DB not available (bootstrap mode), or no tables yet on fresh install.
+        log.debug("notifications: DB lookup failed, using env-only recipients")
+
+    return sorted(emails)

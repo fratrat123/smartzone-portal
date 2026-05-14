@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from action_tokens import TokenError, parse_token
 from coa import disconnect as coa_disconnect
 from config import config
-from db import Admin, AuditLog, Device, DeviceSsidSeen, SessionLocal, audit
+from db import Admin, AuditLog, Device, DeviceSsidSeen, ExtraNotifyRecipient, SessionLocal, audit
 from device_types import DEVICE_TYPES_BY_KEY
 from macfmt import display_colon
 from oauth import current_user, is_admin, is_bootstrap_admin
@@ -429,6 +429,33 @@ def admins():
                         audit(s, "admin_remove", actor=actor, details=f"removed {target}")
                         s.commit()
 
+        elif action == "notify_add":
+            # Additional non-admin email that should receive new-pending alerts.
+            # No domain restriction (unlike admins) — these can be shared
+            # mailboxes, audit aliases, external on-call addresses, etc.
+            if not email or "@" not in email:
+                error = "Enter a valid email address."
+            else:
+                with SessionLocal() as s:
+                    if s.get(ExtraNotifyRecipient, email):
+                        error = f"{email} is already on the notify list."
+                    else:
+                        s.add(ExtraNotifyRecipient(
+                            email=email,
+                            added_by_email=actor,
+                            note=(request.form.get("note") or "").strip()[:1000] or None,
+                        ))
+                        audit(s, "notify_add", actor=actor, details=f"added {email}")
+                        s.commit()
+
+        elif action == "notify_remove":
+            with SessionLocal() as s:
+                row = s.get(ExtraNotifyRecipient, email)
+                if row:
+                    s.delete(row)
+                    audit(s, "notify_remove", actor=actor, details=f"removed {email}")
+                    s.commit()
+
         if not error:
             return redirect(url_for("admin.admins"))
 
@@ -445,12 +472,27 @@ def admins():
             }
             for a in db_admins
         ]
+        notify_recipients = s.scalars(
+            select(ExtraNotifyRecipient).order_by(ExtraNotifyRecipient.added_at.desc())
+        ).all()
+        notify_view = [
+            {
+                "email": r.email,
+                "added_by_email": r.added_by_email,
+                "added_at": r.added_at,
+                "note": r.note,
+            }
+            for r in notify_recipients
+        ]
 
     bootstrap = sorted(config.ADMIN_EMAILS)
+    env_notify = sorted(config.NOTIFY_EMAILS)
     return render_template(
         "admin_admins.html",
         bootstrap_admins=bootstrap,
         db_admins=db_admins_view,
+        env_notify=env_notify,
+        notify_recipients=notify_view,
         domain=config.GOOGLE_HOSTED_DOMAIN,
         user=current_user(),
         error=error,

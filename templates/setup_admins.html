@@ -17,6 +17,24 @@
       <span class="hint">One email per line (or comma-separated). All must be
       in the Workspace domain you set on the previous step.</span>
     </label>
+
+    <hr style="margin:18px 0;border:none;border-top:1px solid var(--border)">
+
+    <p style="margin-bottom:6px"><strong>Extra notification recipients</strong>
+    <span class="hint">(optional)</span></p>
+    <p class="muted" style="margin:0 0 12px;font-size:0.9em">
+      Admins above always receive new-pending-device emails — no need to list
+      them here. Add additional addresses below if you want shared mailboxes,
+      audit aliases, or non-admin team members to also get notified. These
+      addresses can't log in to the admin UI; they just receive the email.
+      You can also manage this list later from the admin UI.
+    </p>
+
+    <label class="field">Extra notify-only emails
+      <textarea name="extra_notify_emails" rows="3"
+                placeholder="wifi-alerts@example.org&#10;netops@example.org">{{ s.NOTIFY_EMAILS|replace(',', '\n') if s.NOTIFY_EMAILS else '' }}</textarea>
+      <span class="hint">One per line. Leave blank if admins-only is fine.</span>
+    </label>
   </div>
 </form>
 {% endblock %}

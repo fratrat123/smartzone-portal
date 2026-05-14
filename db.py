@@ -86,6 +86,22 @@ class Admin(Base):
     note: Mapped[str | None] = mapped_column(Text)
 
 
+class ExtraNotifyRecipient(Base):
+    """Extra (non-admin) email addresses that receive new-pending-device
+    notifications. Admins automatically get notifications (no row needed in
+    this table) — this is for shared inboxes, on-call rotations, audit aliases,
+    etc. that should know about new requests but shouldn't have login access
+    to the admin UI.
+
+    Live-editable via /admin/notifications — no service restart needed."""
+    __tablename__ = "extra_notify_recipients"
+
+    email: Mapped[str] = mapped_column(String(255), primary_key=True)
+    added_by_email: Mapped[str | None] = mapped_column(String(255))
+    added_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    note: Mapped[str | None] = mapped_column(Text)
+
+
 class AuditLog(Base):
     __tablename__ = "audit_log"
 

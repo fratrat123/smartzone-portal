@@ -325,14 +325,22 @@ def oauth():
 @bp.route("/admins", methods=["GET", "POST"])
 def admins():
     if request.method == "POST":
-        raw = (request.form.get("admin_emails") or "").strip()
-        # Normalize: split on commas + whitespace, lowercase, dedupe-preserve-order.
-        seen: list[str] = []
-        for part in raw.replace("\n", ",").split(","):
-            p = part.strip().lower()
-            if p and p not in seen:
-                seen.append(p)
-        _save("admins", ADMIN_EMAILS=",".join(seen))
+        def _normalize_list(raw: str) -> list[str]:
+            seen: list[str] = []
+            for part in raw.replace("\n", ",").split(","):
+                p = part.strip().lower()
+                if p and p not in seen:
+                    seen.append(p)
+            return seen
+
+        admin_emails = _normalize_list(request.form.get("admin_emails") or "")
+        extra_notify = _normalize_list(request.form.get("extra_notify_emails") or "")
+        # Drop entries from extra_notify that are already admins — they'd get
+        # notifications anyway via the admin-always-notify rule.
+        extra_notify = [e for e in extra_notify if e not in admin_emails]
+        _save("admins",
+              ADMIN_EMAILS=",".join(admin_emails),
+              NOTIFY_EMAILS=",".join(extra_notify))
         return redirect(_next_url("admins"))
     return _render("admins", "setup_admins.html")
 

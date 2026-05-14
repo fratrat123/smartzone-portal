@@ -18,7 +18,13 @@ if _cert and _key and os.path.exists(_cert) and os.path.exists(_key):
     certfile = _cert
     keyfile = _key
 else:
-    bind = "0.0.0.0:8080"
+    # Plain HTTP fallback for the pre-cert window. Bind 80 (not 8080) because
+    # SmartZone's walled garden only permits ports 80 and 443 to whitelisted
+    # hosts — port 8080 would be blocked pre-auth and the captive portal
+    # redirect would fail with "cannot connect to server" on every device.
+    # We can bind <1024 because the systemd unit grants AmbientCapabilities=
+    # CAP_NET_BIND_SERVICE.
+    bind = "0.0.0.0:80"
 
 workers = 2
 threads = 4

@@ -5,7 +5,7 @@ install into a shippable OVA that recipients can import and configure via the
 web wizard.
 
 Recipients never see this document. They get an OVA and three sentences of
-instructions ("import, power on, open `http://192.168.254.254:8080/setup`").
+instructions ("import, power on, open `http://192.168.254.254/setup`").
 
 ---
 
@@ -57,7 +57,7 @@ The installer:
 - starts the service in bootstrap mode
 
 When it returns, the box is serving the setup wizard. From your laptop on the
-same network, open `http://<box-ip>:8080/setup`.
+same network, open `http://<box-ip>/setup`.
 
 ## Step 3 — (Recommended) Walk the wizard end-to-end once
 
@@ -118,7 +118,7 @@ sentences for the recipient:
 
 > 1. Import the OVA in ESXi.
 > 2. Power on the VM.
-> 3. Open `http://192.168.254.254:8080/setup` from a browser on the same
+> 3. Open `http://192.168.254.254/setup` from a browser on the same
 >    subnet (or use ESXi's console).
 
 That's all they need.

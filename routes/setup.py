@@ -683,7 +683,7 @@ def network():
                 # before its connection dies.
                 _gc_wizard_states()  # opportunistic cleanup
                 token = _save_wizard_state_to_disk(dict(_wizard_state()))
-                resume_url = f"http://{new_ip}:8080/setup/resume/{token}"
+                resume_url = f"http://{new_ip}/setup/resume/{token}"
 
                 state_snapshot = dict(_wizard_state())
                 def _apply_in_bg():

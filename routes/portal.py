@@ -128,8 +128,8 @@ def oauth_login():
     # Build redirect_uri from the *current request* (not config.PORTAL_BASE_URL)
     # so it works whether the operator hit us via:
     #   - https://portal.hillmanschools.com/   (TLS, after cert is issued)
-    #   - http://portal.hillmanschools.com:8080/  (plain HTTP, while no cert)
-    #   - http://localhost:8080/                 (dev)
+    #   - http://portal.hillmanschools.com/    (plain HTTP, while no cert)
+    #   - http://localhost/                     (dev / direct)
     # Each of those needs its own redirect_uri matching what's in Google's
     # authorized list for the OAuth client. ProxyFix has already mapped any
     # X-Forwarded-Proto so url_for picks the right scheme.

@@ -7,7 +7,7 @@
 |                                                                |
 |   Open in a browser on the same subnet:                        |
 |                                                                |
-|       http://192.168.254.254:8080/setup                        |
+|       http://192.168.254.254/setup                             |
 |                                                                |
 |   The setup wizard collects everything (branding, OAuth,       |
 |   SmartZone, RADIUS, TLS, and the box's permanent network      |

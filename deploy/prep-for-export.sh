@@ -133,7 +133,7 @@ cat <<'EOF'
 
   Recipient experience:
     - Import OVA in ESXi
-    - Power on; console shows http://192.168.254.254:8080/setup
+    - Power on; console shows http://192.168.254.254/setup
     - Open browser at that URL, walk the wizard
     - Wizard reboots the box at the recipient's chosen IP
 ================================================================

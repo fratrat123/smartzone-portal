@@ -67,16 +67,29 @@
         </dd>
       </dl>
 
-      <p style="margin-top:14px"><strong>Walled Garden</strong> — add every line below:</p>
+      <p style="margin-top:14px"><strong>Walled Garden</strong> — add every line below.
+      Specific subdomains only, NOT wildcards like <code>*.google.com</code> or
+      <code>*.gstatic.com</code> — those would also whitelist Android's captive
+      portal detection probes (<code>connectivitycheck.gstatic.com</code>,
+      <code>clients3.google.com</code>), which would make Android skip the
+      portal entirely (it'd think the network is open).</p>
       <pre id="walled-garden" style="background:var(--surface-elevated);padding:12px;border-radius:6px;font-size:0.85em;overflow:auto">{{ portal_hostname }}
-*.google.com
-*.googleapis.com
-*.gstatic.com
-*.googleusercontent.com
+accounts.google.com
 accounts.youtube.com
-gmail.com
-mail.google.com</pre>
+oauth2.googleapis.com
+www.googleapis.com
+www.gstatic.com
+ssl.gstatic.com
+fonts.gstatic.com
+lh3.googleusercontent.com
+lh4.googleusercontent.com
+lh5.googleusercontent.com
+lh6.googleusercontent.com</pre>
       <button type="button" class="btn btn-sm" data-copy="#walled-garden" style="margin-top:6px">Copy walled garden</button>
+      <p class="hint" style="margin-top:8px;font-size:0.85em">
+        Each <code>lhN.googleusercontent.com</code> serves Google account avatars
+        on the OAuth consent screen. Adding 3–6 of them covers the rotation.
+      </p>
     </div>
   </div>
 
@@ -179,6 +192,19 @@ curl -sk -X POST "https://&lt;sz-host&gt;:8443/wsg/api/public/v11_1/clients/disc
       <em>(b)</em> UDP 3799 is firewalled between this box and SmartZone;
       <em>(c)</em> shared secret mismatch — fix it in the wizard or
       <code>.env</code>.</p>
+
+      <p style="margin-top:12px"><strong>Android devices connect to the SSID but never show the captive portal.</strong></p>
+      <p class="muted">Android probes <code>connectivitycheck.gstatic.com/generate_204</code>
+      and <code>clients3.google.com/generate_204</code> to decide whether the
+      network is open or behind a portal. If those URLs reach Google through
+      the walled garden (e.g. because the WLAN has <code>*.gstatic.com</code> or
+      <code>*.google.com</code> whitelisted), Android gets the 204 and assumes
+      the network is open — no portal prompt, no sign-in screen. Replace the
+      wildcards with the specific subdomain list above. iOS uses
+      <code>captive.apple.com</code> and Windows uses
+      <code>www.msftconnecttest.com</code>; we deliberately don't include
+      those either, so all three platforms trigger their captive-portal UI
+      the same way.</p>
     </div>
   </div>
 

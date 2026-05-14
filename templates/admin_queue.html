@@ -195,6 +195,7 @@
               <th>Device</th>
               <th>SSID</th>
               <th>MAC</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -216,7 +217,10 @@
                   <span class="muted" title="Also seen on: {{ d.ssids_seen[1:]|join(', ') }}">+{{ d.ssids_seen|length - 1 }}</span>
                 {% endif %}
               </td>
-              <td><a href="{{ url_for('admin.device', mac=d.mac) }}"><code>{{ d.mac_display }}</code></a></td>
+              <td><code class="muted">{{ d.mac_display }}</code></td>
+              <td class="actions">
+                <a href="{{ url_for('admin.device', mac=d.mac) }}" class="btn btn-sm">Manage</a>
+              </td>
             </tr>
           {% endfor %}
           </tbody>
@@ -243,7 +247,7 @@
         {% else %}
           <table class="data-list">
             <thead><tr>
-              <th>Ignored at</th><th>By</th><th>User</th><th>Device</th><th>SSID</th><th>MAC</th>
+              <th>Ignored at</th><th>By</th><th>User</th><th>Device</th><th>SSID</th><th>MAC</th><th></th>
             </tr></thead>
             <tbody>
             {% for d in ignored %}
@@ -253,7 +257,10 @@
                 <td>{{ d.requested_by_email or '—' }}</td>
                 <td>{{ d.friendly_name or d.device_type_label }}</td>
                 <td>{{ d.last_seen_ssid or '—' }}</td>
-                <td><a href="{{ url_for('admin.device', mac=d.mac) }}"><code>{{ d.mac_display }}</code></a></td>
+                <td><code class="muted">{{ d.mac_display }}</code></td>
+                <td class="actions">
+                  <a href="{{ url_for('admin.device', mac=d.mac) }}" class="btn btn-sm">Manage</a>
+                </td>
               </tr>
             {% endfor %}
             </tbody>

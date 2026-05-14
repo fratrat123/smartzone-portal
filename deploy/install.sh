@@ -29,6 +29,7 @@ apt-get install -y --no-install-recommends \
     certbot python3-certbot-dns-cloudflare \
     libcap2-bin \
     netplan.io \
+    net-tools \
     git ca-certificates curl
 
 # Some Debian package mirrors have shipped 0-byte python3.13 binaries in the

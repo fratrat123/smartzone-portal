@@ -10,22 +10,6 @@
     <h1 style="text-align:center;margin:0 0 12px">Setup complete</h1>
     <p style="text-align:center">Configuration saved to <code>{{ env_path }}</code>.</p>
 
-    {% if new_ip %}
-      <div class="notice notice-info" style="margin:18px 0">
-        <strong>Reconnect at the new address.</strong>
-        <p style="margin:8px 0 0">This box is restarting at:</p>
-        <ul style="margin:6px 0 0">
-          <li>IP: <code>{{ new_ip }}</code></li>
-          <li>Hostname: <code>{{ new_hostname }}</code></li>
-        </ul>
-        <p style="margin:10px 0 0;font-size:0.9em">
-          Move your laptop to the new subnet and open
-          {% if base_url %}<a href="{{ base_url }}">{{ base_url }}</a>{% else %}<code>http://{{ new_ip }}</code>{% endif %}
-          once the box finishes restarting (about 30 seconds).
-        </p>
-      </div>
-    {% endif %}
-
     {% if cert_ok is defined %}
       <div class="notice {{ 'notice-success' if cert_ok else 'notice-warning' }}"
            style="margin:18px 0">
@@ -35,18 +19,16 @@
         {% else %}
           {{ cert_msg|replace('\n', '<br>')|safe }}
           <p class="muted" style="margin:8px 0 0;font-size:0.9em">
-          Cert issuance happens from the box itself — if your setup network
-          doesn't have internet access, this is expected. After the box
-          reaches its new IP with working internet, re-run the wizard from
-          the admin UI to retry.</p>
+          You can re-run the wizard later from the admin UI to retry cert
+          issuance, or run certbot manually.</p>
         {% endif %}
       </div>
     {% endif %}
 
-    <p class="muted" style="font-size:0.88em;text-align:center;margin-top:24px">
-      systemd is restarting the portal now. The browser tab below will stay
-      open — don't refresh until you've reconnected to the new IP.
-    </p>
+    <p>The portal is restarting now. systemd will bring it back up in normal
+    mode within a few seconds at the same IP you've been on
+    {% if base_url %}— reload <a href="{{ base_url }}">{{ base_url }}</a> or
+    visit the admin URL{% endif %}.</p>
   </div>
 </div>
 {% endblock %}

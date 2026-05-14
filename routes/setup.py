@@ -32,6 +32,7 @@ bp = Blueprint("setup", __name__, url_prefix="/setup")
 # The label is shown in the progress bar; the key is the URL slug.
 STEPS = [
     ("welcome",        "Welcome",           False),
+    ("network",        "Network",           False),
     ("branding",       "Branding",          False),
     ("storage",        "Storage",           False),
     ("smtp",           "Email",             True),
@@ -41,7 +42,6 @@ STEPS = [
     ("radius",         "RADIUS",            False),
     ("tls",            "TLS",               True),
     ("smartzone_wlan", "SmartZone WLAN",    False),
-    ("network",        "Network",           False),
     ("review",         "Review & finish",   False),
 ]
 
@@ -78,6 +78,82 @@ def _wizard_state() -> dict:
     """All collected wizard input lives under one session key so we can clear
     it at the end with `session.pop('wizard', None)`."""
     return session.setdefault("wizard", {})
+
+
+# Wizard state-on-disk for cross-IP handoff:
+# When the Network step (now step 2) changes the box's IP, the browser loses
+# its session cookie (cookies are scoped to the host that set them). We bridge
+# by saving the wizard state to a file on disk, keyed by an unguessable URL
+# token. The "reconnect at new IP" page links to /setup/resume/<token>, which
+# loads the state into a fresh session at the new IP.
+WIZARD_STATE_DIR = "/opt/captive-portal/.wizard-state"
+WIZARD_STATE_TTL_SECONDS = 30 * 60  # tokens expire in 30 minutes
+
+
+def _save_wizard_state_to_disk(state: dict) -> str:
+    """Persist `state` to a JSON file under WIZARD_STATE_DIR; return a fresh
+    URL-safe token the caller can include in the resume URL."""
+    import json as _json
+    import tempfile as _tf
+    os.makedirs(WIZARD_STATE_DIR, exist_ok=True, mode=0o700)
+    token = secrets.token_urlsafe(24)
+    path = os.path.join(WIZARD_STATE_DIR, f"{token}.json")
+    fd, tmp = _tf.mkstemp(dir=WIZARD_STATE_DIR, prefix=".", suffix=".tmp")
+    with os.fdopen(fd, "w") as f:
+        _json.dump({"state": state, "ts": int(time.time())}, f)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
+    return token
+
+
+def _load_wizard_state_from_disk(token: str) -> dict | None:
+    """Load + return state by token, or None if invalid/expired. Tokens older
+    than WIZARD_STATE_TTL_SECONDS are treated as missing (and the file is
+    deleted to keep things tidy)."""
+    import json as _json
+    # Defensive: reject tokens that try to escape the state dir.
+    if not token or any(c in token for c in "/\\.") or len(token) > 64:
+        return None
+    path = os.path.join(WIZARD_STATE_DIR, f"{token}.json")
+    try:
+        with open(path) as f:
+            data = _json.load(f)
+    except (FileNotFoundError, _json.JSONDecodeError, OSError):
+        return None
+    if int(time.time()) - int(data.get("ts", 0)) > WIZARD_STATE_TTL_SECONDS:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        return None
+    return data.get("state")
+
+
+def _clear_wizard_state_on_disk(token: str) -> None:
+    """Delete a state file. Safe to call on a non-existent token."""
+    if not token or any(c in token for c in "/\\.") or len(token) > 64:
+        return
+    try:
+        os.unlink(os.path.join(WIZARD_STATE_DIR, f"{token}.json"))
+    except OSError:
+        pass
+
+
+def _gc_wizard_states() -> None:
+    """Sweep expired state files. Cheap to call; runs on demand."""
+    try:
+        now = int(time.time())
+        for name in os.listdir(WIZARD_STATE_DIR):
+            if not name.endswith(".json"):
+                continue
+            path = os.path.join(WIZARD_STATE_DIR, name)
+            try:
+                if now - int(os.path.getmtime(path)) > WIZARD_STATE_TTL_SECONDS:
+                    os.unlink(path)
+            except OSError:
+                pass
+    except OSError:
+        pass
 
 
 def _save(key: str, **values) -> None:
@@ -554,21 +630,83 @@ def test_network():
 
 @bp.route("/network", methods=["GET", "POST"])
 def network():
+    """First substantive step. We apply the IP change *immediately* on submit
+    so that every subsequent step (SMTP test, SmartZone test, Cloudflare test,
+    cert issuance, OAuth callback) runs against the box's *final* network.
+
+    The IP change drops the browser's TCP connection. We bridge that with an
+    on-disk state file keyed by a URL token: the operator clicks the resume
+    link at the new IP, lands on /setup/resume/<token>, and the wizard
+    continues at the next step with their session state restored.
+    """
+    error = None
     if request.method == "POST":
         ip = (request.form.get("ip_address") or "").strip()
         mask = (request.form.get("subnet_mask") or "").strip()
-        cidr = _combine_ip_mask(ip, mask) or ""
-        _save("network",
-              NET_IP_CIDR=cidr,
-              NET_GATEWAY=(request.form.get("gateway") or "").strip(),
-              NET_DNS=(request.form.get("dns") or "").strip(),
-              NET_HOSTNAME=(request.form.get("hostname") or "").strip() or "portal")
-        return redirect(_next_url("network"))
+        cidr = _combine_ip_mask(ip, mask)
+        gateway = (request.form.get("gateway") or "").strip()
+        dns = (request.form.get("dns") or "").strip()
+        hostname = (request.form.get("hostname") or "").strip() or "portal"
+
+        if not cidr:
+            error = (f"Couldn't combine IP '{ip}' and mask '{mask}' into a "
+                     f"valid CIDR. Check both fields.")
+        elif not gateway:
+            error = "Gateway is required."
+        else:
+            _save("network",
+                  NET_IP_CIDR=cidr, NET_GATEWAY=gateway,
+                  NET_DNS=dns, NET_HOSTNAME=hostname)
+
+            # Is the new IP different from what the box has now? If same, no
+            # bridge needed — just continue. (Useful for re-runs / when the
+            # operator is happy with the current DHCP-assigned IP.)
+            new_ip = cidr.split("/", 1)[0]
+            current_cidr = _detect_current_network().get("ip_cidr") or ""
+            current_ip = current_cidr.split("/", 1)[0] if current_cidr else ""
+
+            if new_ip == current_ip:
+                # IP isn't changing — but we still want hostname/gateway/DNS
+                # applied so the rest of the wizard runs in the final state.
+                ok, msg = _apply_network({"network": {
+                    "NET_IP_CIDR": cidr, "NET_GATEWAY": gateway,
+                    "NET_DNS": dns, "NET_HOSTNAME": hostname,
+                }})
+                if not ok:
+                    error = f"Network apply failed: {msg}"
+                else:
+                    return redirect(_next_url("network"))
+            else:
+                # IP IS changing. Save state to disk + token, render reconnect
+                # page, then apply network in a background thread *after* the
+                # response goes out so the browser actually receives the page
+                # before its connection dies.
+                _gc_wizard_states()  # opportunistic cleanup
+                token = _save_wizard_state_to_disk(dict(_wizard_state()))
+                resume_url = f"http://{new_ip}:8080/setup/resume/{token}"
+
+                state_snapshot = dict(_wizard_state())
+                def _apply_in_bg():
+                    time.sleep(1.5)
+                    try:
+                        ok, msg = _apply_network(state_snapshot)
+                        logging.getLogger(__name__).warning(
+                            "wizard: network-step apply -> ok=%s msg=%s", ok, msg)
+                    except Exception:
+                        logging.getLogger(__name__).exception(
+                            "wizard: network-step apply crashed")
+                threading.Thread(target=_apply_in_bg,
+                                 name="wizard-network-apply", daemon=True).start()
+
+                # Clear in-browser session — they'll move to the new IP where
+                # this cookie is invalid anyway.
+                session.pop("wizard", None)
+                return _render("network", "setup_network_reconnect.html",
+                               new_ip=new_ip, hostname=hostname,
+                               token=token, resume_url=resume_url)
 
     state = _wizard_state().get("network", {})
     detected = _detect_current_network()
-    # Pre-fill IP and mask separately. If state already has CIDR, split it
-    # back into IP + mask. Otherwise use detected values.
     existing_cidr = state.get("NET_IP_CIDR") or detected.get("ip_cidr") or "192.168.254.254/24"
     pf_ip, pf_mask = _split_cidr(existing_cidr)
     return _render("network", "setup_network.html",
@@ -576,7 +714,26 @@ def network():
                    suggested_mask=pf_mask or "255.255.255.0",
                    suggested_gateway=state.get("NET_GATEWAY") or detected.get("gateway", ""),
                    suggested_dns=state.get("NET_DNS") or detected.get("dns", "1.1.1.1 1.0.0.1"),
-                   suggested_hostname=state.get("NET_HOSTNAME") or detected.get("hostname", "portal"))
+                   suggested_hostname=state.get("NET_HOSTNAME") or detected.get("hostname", "portal"),
+                   error=error)
+
+
+@bp.route("/resume/<token>")
+def resume(token: str):
+    """Pick up a wizard session that was started on the old IP. After Network
+    step's IP change, the operator clicks a link to this URL at the new IP."""
+    state = _load_wizard_state_from_disk(token)
+    if state is None:
+        return _render("welcome", "setup_welcome.html",
+                       error=("That resume link is invalid or expired. "
+                              "Walking the wizard from the beginning is fine — "
+                              "the network change was already applied.")), 404
+    session["wizard"] = state
+    session.modified = True
+    # Don't delete the state file yet — the operator could hit refresh / reopen
+    # the link. It'll be GC'd on TTL expiry, or cleared explicitly at finalize.
+    # Send them to the step right after Network.
+    return redirect(_next_url("network"))
 
 
 def _detect_current_network() -> dict:
@@ -849,16 +1006,14 @@ def _issue_tls_cert(state: dict) -> tuple[bool, str, dict[str, str]]:
 
 
 def _finalize(flat: dict[str, str]):
-    """Save everything and trigger a restart at the new IP.
+    """Write .env, issue the TLS cert, and signal the gunicorn master to
+    restart so the next boot reads SETUP_COMPLETE=true and switches from
+    bootstrap to normal mode.
 
-    Order matters:
-      1. Issue TLS cert (still on the setup IP, but only if internet works
-         from it — best-effort).
-      2. Write .env (only the non-transient subset).
-      3. Render the finished page so the browser receives it BEFORE we change
-         the network and lose the connection.
-      4. After the response goes out: apply netplan (browser dies), exit so
-         systemd restarts the portal in normal mode at the new IP.
+    The network change is NOT applied here — that happened at the Network
+    step (step 2). By the time we get to this finalize, the box is already
+    at its permanent IP, hostname, and routing. Cert issuance, OAuth, etc.
+    all run against the real network.
     """
     env = _env_subset(flat)
     env.setdefault("FLASK_SECRET_KEY", secrets.token_urlsafe(48))
@@ -873,37 +1028,16 @@ def _finalize(flat: dict[str, str]):
         return _render("review", "setup_review.html", flat=flat,
                        error=f"Failed to write .env: {e}"), 500
 
-    state_snapshot = dict(_wizard_state())  # for the background thread
     session.pop("wizard", None)
+    _gc_wizard_states()  # opportunistic cleanup of leftover resume tokens
 
-    new_ip = state_snapshot.get("network", {}).get("NET_IP_CIDR", "").split("/")[0]
-    new_hostname = state_snapshot.get("network", {}).get("NET_HOSTNAME", "portal")
     base_url = flat.get("PORTAL_BASE_URL", "")
-
     log = logging.getLogger(__name__)
 
     def _after_response():
-        # Tiny delay so the HTTP response definitely makes it out the door
-        # before we tear down the process.
         time.sleep(1.5)
-        try:
-            ok, msg = _apply_network(state_snapshot)
-            log.warning("wizard: network apply -> ok=%s msg=%s", ok, msg)
-        except Exception:
-            log.exception("wizard: network apply crashed")
-
-        # Kill the gunicorn master so systemd restarts the *whole service*.
-        # os._exit only kills this worker — the master would just spawn a
-        # replacement and the new .env wouldn't get picked up. SIGTERM the
-        # parent (gunicorn master); systemd's Restart=always brings the whole
-        # service back, re-reading .env.
-        #
-        # Detection: systemd sets INVOCATION_ID in the service environment,
-        # which is inherited by all descendants. If we have it, we're under a
-        # systemd service and our parent is the gunicorn master. That's more
-        # reliable than checking /proc/<ppid>/comm, which can be 'python3'
-        # (when ExecStart=python3 -m gunicorn) or 'gunicorn' depending on
-        # how the unit was written.
+        # SIGTERM the gunicorn master so systemd restarts the whole service
+        # and the new master reads .env in normal mode.
         ppid = os.getppid()
         if os.environ.get("INVOCATION_ID"):
             log.warning("wizard: signaling parent pid=%s (gunicorn master) to shut down", ppid)
@@ -911,13 +1045,9 @@ def _finalize(flat: dict[str, str]):
                 os.kill(ppid, signal.SIGTERM)
             except OSError as e:
                 log.warning("wizard: SIGTERM to parent failed: %s", e)
-            # Give the master a moment to broadcast SIGTERM to siblings.
             time.sleep(2)
         else:
             log.warning("wizard: not under systemd (no INVOCATION_ID) — just exiting worker")
-        # Final fallback: kill this worker so we never linger if the master
-        # didn't notice us. (In dev / `python app.py` mode, parent is the
-        # shell and we just do os._exit cleanly.)
         os._exit(0)
 
     threading.Thread(target=_after_response, name="finalize", daemon=True).start()
@@ -926,8 +1056,6 @@ def _finalize(flat: dict[str, str]):
                            env_path=str(path),
                            cert_ok=cert_ok,
                            cert_msg=cert_msg,
-                           new_ip=new_ip,
-                           new_hostname=new_hostname,
                            base_url=base_url)
 
 

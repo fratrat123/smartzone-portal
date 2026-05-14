@@ -1,0 +1,42 @@
+{% extends "setup_base.html" %}
+
+{% block step_body %}
+<div class="card">
+  <div class="card-body" style="padding:28px">
+    <h2 style="margin-top:0">Network change applied — reconnect to continue</h2>
+
+    <p>This box is moving to <code style="font-size:1.05em">{{ new_ip }}</code>
+    (hostname <code>{{ hostname }}</code>) in a few seconds. Your browser will
+    lose connection here.</p>
+
+    <p>On your laptop:</p>
+    <ol>
+      <li>Make sure you're on the same subnet as <code>{{ new_ip }}</code>
+        (or that your laptop can route there).</li>
+      <li>Click this link, or paste the URL below into your browser:</li>
+    </ol>
+
+    <p style="margin:20px 0;text-align:center">
+      <a href="{{ resume_url }}" class="btn btn-primary" style="font-size:1.1em">
+        Resume wizard at {{ new_ip }} →
+      </a>
+    </p>
+
+    <pre style="background:var(--surface-elevated);padding:12px;border-radius:6px;word-break:break-all;white-space:pre-wrap;font-size:0.85em">{{ resume_url }}</pre>
+
+    <p class="muted" style="font-size:0.88em;margin-top:18px">
+      The resume token in that URL is single-use-ish (one operator, one
+      session) and expires after 30 minutes. If you let it expire you can
+      restart the wizard from the welcome page — the network change is
+      already in effect, so the new IP will be the current one.
+    </p>
+  </div>
+</div>
+{% endblock %}
+
+{% block step_nav %}
+{# No prev/next here — the only way forward is the resume link. #}
+<div style="text-align:center;color:var(--text-muted);font-size:0.9em;margin-top:20px">
+  Waiting for you to reconnect at the new address…
+</div>
+{% endblock %}

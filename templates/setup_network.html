@@ -4,15 +4,19 @@
 <form id="step-form" method="post" class="card">
   <div class="card-body">
     <p>Set this server's permanent network address. The change is applied
-    after you click <strong>Save and restart</strong> on the next step —
-    that's when you'll need to reconnect to the new IP.</p>
+    <strong>immediately</strong> when you click Continue — every subsequent
+    wizard step runs against this network, not the temporary one you're on
+    now.</p>
 
     <div class="notice notice-warning" style="margin-bottom:16px">
-      <strong>Heads-up:</strong> when these settings are applied at the end
-      of the wizard, this browser session will drop. Move your laptop to the
-      same subnet as the new IP and open
-      <code>http://&lt;new-ip&gt;</code> in a fresh tab.
+      <strong>Heads-up:</strong> if the IP you enter is different from this
+      box's current one, your browser will lose connection. We'll show you a
+      reconnect link to use at the new address.
     </div>
+
+    {% if error %}
+      <div class="notice notice-error" style="margin-bottom:16px">{{ error }}</div>
+    {% endif %}
 
     <div class="row" style="gap:12px">
       <label class="field" style="flex:2">IP address

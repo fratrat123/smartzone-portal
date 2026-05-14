@@ -353,96 +353,107 @@ def queue_status():
 @bp.route("/device/<mac>", methods=["GET", "POST"])
 @admin_required
 def device(mac):
-    log = logging.getLogger(__name__)
     if request.method == "POST":
-        log.info("device POST: mac=%s action=%s actor=%s form_keys=%s",
-                 mac, request.form.get("action"),
-                 (current_user() or {}).get("email"),
-                 list(request.form.keys()))
+        return _device_post(mac)
+    return _device_get(mac)
+
+
+def _device_post(mac: str):
+    """Handle approve/deny/ignore/reset/delete from the device detail form.
+
+    Structured so the kick runs *outside* the session that wrote the status
+    change. Previously the kick was inside an outer `with s:` and opened a
+    nested `with s2:` for the kick-sent audit. Because SessionLocal is a
+    `scoped_session`, both handles resolve to the same thread-local session,
+    so the inner `close()` ended the connection for the outer with too —
+    and downstream redirects (and the next request hitting the queue) saw
+    stale data, making the approve look like it never happened.
+    """
+    log = logging.getLogger(__name__)
+    action = request.form.get("action")
+    note = (request.form.get("note") or "").strip()[:1000] or None
+    actor = current_user()["email"]
+    log.info("device POST: mac=%s action=%s actor=%s", mac, action, actor)
+
+    if action not in ("approve", "deny", "ignore", "reset", "delete"):
+        abort(400)
+
+    ap_mac: str | None = None
     with SessionLocal() as s:
         dev = s.get(Device, mac)
         if not dev:
-            log.warning("device POST: row not found for mac=%s", mac)
             abort(404)
 
-        if request.method == "POST":
-            action = request.form.get("action")
-            note = (request.form.get("note") or "").strip()[:1000] or None
-            actor = current_user()["email"]
+        if action == "delete":
+            s.execute(
+                DeviceSsidSeen.__table__.delete().where(DeviceSsidSeen.mac == mac)
+            )
+            audit(s, "delete", mac=mac, actor=actor,
+                  details=f"prev_status={dev.status} {note or ''}".strip())
+            s.delete(dev)
+            s.commit()
+            flash("Device record deleted.", "success")
+            return redirect(url_for("admin.queue"))
 
-            if action == "delete":
-                # Remove the Device row and its DeviceSsidSeen rows. AuditLog
-                # entries are intentionally kept — they reference the MAC by
-                # string so the historical record survives the row going away.
-                s.execute(
-                    DeviceSsidSeen.__table__.delete().where(DeviceSsidSeen.mac == mac)
-                )
-                s.delete(dev)
-                # Audit the deletion in a fresh session before commit so even
-                # if the delete fails we keep the intent recorded.
-                audit(s, "delete", mac=mac, actor=actor,
-                      details=f"prev_status={dev.status} {note or ''}".strip())
-                s.commit()
-                return redirect(url_for("admin.queue"))
+        now = datetime.now(timezone.utc)
+        if action == "approve":
+            default = _default_approval_seconds()
+            try:
+                duration = int(request.form.get("duration", str(default)))
+            except ValueError:
+                duration = default
+            dev.status = "approved"
+            dev.decided_by_email = actor
+            dev.decided_at = now
+            dev.approved_until = (now + timedelta(seconds=duration)) if duration > 0 else None
+        elif action == "deny":
+            dev.status = "denied"
+            dev.decided_by_email = actor
+            dev.decided_at = now
+            dev.approved_until = None
+        elif action == "ignore":
+            dev.status = "ignored"
+            dev.decided_by_email = actor
+            dev.decided_at = now
+            dev.approved_until = None
+        else:  # reset
+            dev.status = "pending"
+            dev.decided_by_email = None
+            dev.decided_at = None
+            dev.approved_until = None
 
-            if action in ("approve", "deny", "ignore", "reset"):
-                now = datetime.now(timezone.utc)
-                if action == "approve":
-                    # Duration in seconds; 0 = forever. Fallback is the
-                    # operator-configured default from Settings.
-                    default = _default_approval_seconds()
-                    try:
-                        duration = int(request.form.get("duration", str(default)))
-                    except ValueError:
-                        duration = default
-                    dev.status = "approved"
-                    dev.decided_by_email = actor
-                    dev.decided_at = now
-                    dev.approved_until = (now + timedelta(seconds=duration)) if duration > 0 else None
-                elif action == "deny":
-                    dev.status = "denied"
-                    dev.decided_by_email = actor
-                    dev.decided_at = now
-                    dev.approved_until = None
-                elif action == "ignore":
-                    dev.status = "ignored"
-                    dev.decided_by_email = actor
-                    dev.decided_at = now
-                    dev.approved_until = None
-                else:  # reset
-                    dev.status = "pending"
-                    dev.decided_by_email = None
-                    dev.decided_at = None
-                    dev.approved_until = None
-                if note:
-                    dev.note = note
-                audit_details = note or ""
-                if action == "approve" and dev.approved_until:
-                    audit_details = f"until={dev.approved_until.isoformat()} {audit_details}".strip()
-                audit(s, action, mac=mac, actor=actor, details=audit_details or None)
-                s.commit()
+        if note:
+            dev.note = note
 
-                # Kick the client so the new status takes effect on reassociation.
-                # Approve  -> rejoin silently via MAC auth Accept
-                # Deny     -> rejoin attempt is rejected, stays off the network
-                # Reset    -> falls back to captive portal (pending again)
-                #
-                # Capture the AP MAC before the session closes so the kick
-                # attempt below doesn't trigger a lazy reload on a detached row.
-                ap_mac = dev.first_seen_ap_mac
-                kicked, method, detail = _kick_client(mac, ap_mac)
-                with SessionLocal() as s2:
-                    audit(s2, "kick_sent", mac=mac, actor=actor,
-                          details=f"method={method} ok={kicked} ap_mac={ap_mac} {detail}")
-                    s2.commit()
-                _flash_kick_result(action, kicked, method, detail)
+        audit_details = note or ""
+        if action == "approve" and dev.approved_until:
+            audit_details = f"until={dev.approved_until.isoformat()} {audit_details}".strip()
+        audit(s, action, mac=mac, actor=actor, details=audit_details or None)
+        # Capture before the session closes so the kick below doesn't try
+        # to lazy-load on a detached / expired instance.
+        ap_mac = dev.first_seen_ap_mac
+        s.commit()
+    # ---- with s: closed; status change is durably persisted ----
 
-                if action == "reset":
-                    return redirect(url_for("admin.device", mac=mac))
-                return redirect(url_for("admin.queue"))
+    # Kick the client on a separate session-scope so the close() that the
+    # kick-audit triggers can't roll back / hide the status update above.
+    kicked, method, detail = _kick_client(mac, ap_mac)
+    with SessionLocal() as s2:
+        audit(s2, "kick_sent", mac=mac, actor=actor,
+              details=f"method={method} ok={kicked} ap_mac={ap_mac} {detail}")
+        s2.commit()
+    _flash_kick_result(action, kicked, method, detail)
 
-            abort(400)
+    if action == "reset":
+        return redirect(url_for("admin.device", mac=mac))
+    return redirect(url_for("admin.queue"))
 
+
+def _device_get(mac: str):
+    with SessionLocal() as s:
+        dev = s.get(Device, mac)
+        if not dev:
+            abort(404)
         history = s.scalars(
             select(AuditLog).where(AuditLog.mac == mac).order_by(AuditLog.ts.desc()).limit(50)
         ).all()
@@ -459,10 +470,11 @@ def device(mac):
             }
             for r in ssid_rows
         ]
+        view = _view(dev, [r["ssid"] for r in ssids_seen_view])
 
     return render_template(
         "admin_device.html",
-        d=_view(dev, [r["ssid"] for r in ssids_seen_view]),
+        d=view,
         history=history,
         ssids_seen=ssids_seen_view,
     )

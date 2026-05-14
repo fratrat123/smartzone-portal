@@ -73,7 +73,8 @@ mail.google.com</pre>
   </div>
 </div>
 
-<form id="step-form" method="post" action="{{ next_url }}" style="display:none"></form>
+<form id="step-form" method="post" action="{{ next_url }}" style="display:none">
+    {{ csrf_input }}</form>
 {% endblock %}
 
 {% block next_button %}

@@ -2,6 +2,7 @@
 
 {% block step_body %}
 <form id="step-form" method="post" class="card">
+    {{ csrf_input }}
   <div class="card-body">
     <p>Set this server's permanent network address. The change is applied
     <strong>immediately</strong> when you click Continue — every subsequent

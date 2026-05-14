@@ -3,6 +3,7 @@
 
 {% block step_body %}
 <form id="step-form" method="post" class="card">
+    {{ csrf_input }}
   <div class="card-body">
     <p>The portal sends verification emails (sign-in codes / magic links) and
     new-pending alerts to admins. Point it at an SMTP relay.</p>

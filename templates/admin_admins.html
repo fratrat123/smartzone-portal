@@ -22,6 +22,7 @@
     <div class="card-header"><h2>Add admin</h2></div>
     <div class="card-body">
       <form method="post">
+    {{ csrf_input }}
         <input type="hidden" name="action" value="add">
         <div class="form-row">
           <label class="field" style="flex:1;margin-bottom:0">
@@ -69,6 +70,7 @@
     <div class="card-body">
       <form method="post" action="{{ url_for('setup.reconfigure') }}"
             onsubmit="return confirm('Re-run the setup wizard? The portal will restart at the end of the wizard so the new settings take effect.');">
+    {{ csrf_input }}
         <button type="submit" class="btn">Re-run setup wizard…</button>
         <span class="hint" style="margin-left:8px">Walk through branding, SMTP, OAuth, SmartZone, RADIUS, TLS again. Current values pre-fill.</span>
       </form>
@@ -78,6 +80,7 @@
       <p style="margin:0 0 8px"><strong style="color:var(--danger)">Danger zone</strong></p>
       <form method="post" action="{{ url_for('admin.factory_reset') }}"
             onsubmit="return (prompt('This wipes ALL portal data: device list, audit log, admins added via UI, .env config, wizard state. The box keeps its network and hostname but resets to bootstrap mode (the wizard).\n\nType FACTORY RESET to confirm:') === 'FACTORY RESET');">
+    {{ csrf_input }}
         <button type="submit" class="btn btn-danger">Factory reset…</button>
         <span class="hint" style="margin-left:8px">Wipes all portal data and reboots into the setup wizard. Network/hostname stay.</span>
       </form>
@@ -98,6 +101,7 @@
       </p>
 
       <form method="post" style="margin-top:12px">
+    {{ csrf_input }}
         <input type="hidden" name="action" value="notify_add">
         <div class="form-row">
           <label class="field" style="flex:1;margin-bottom:0">
@@ -139,6 +143,7 @@
               <td>{{ r.note or '' }}</td>
               <td class="actions">
                 <form method="post" style="display:inline" onsubmit="return confirm('Remove {{ r.email }} from notifications?');">
+    {{ csrf_input }}
                   <input type="hidden" name="action" value="notify_remove">
                   <input type="hidden" name="email" value="{{ r.email }}">
                   <button type="submit" class="btn btn-sm btn-danger">Remove</button>
@@ -179,6 +184,7 @@
               <td class="actions">
                 {% if a.email != user.email %}
                   <form method="post" style="display:inline" onsubmit="return confirm('Remove {{ a.email }}?');">
+    {{ csrf_input }}
                     <input type="hidden" name="action" value="remove">
                     <input type="hidden" name="email" value="{{ a.email }}">
                     <button type="submit" class="btn btn-sm btn-danger">Remove</button>

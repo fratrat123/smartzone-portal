@@ -4,6 +4,7 @@
 
 {% block step_body %}
 <form id="step-form" method="post" class="card">
+    {{ csrf_input }}
   <div class="card-body">
     <p>The portal handles its own TLS via Let's Encrypt with the
     <strong>DNS-01</strong> challenge through Cloudflare. This means the box

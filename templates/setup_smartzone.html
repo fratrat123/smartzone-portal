@@ -3,6 +3,7 @@
 
 {% block step_body %}
 <form id="step-form" method="post" class="card">
+    {{ csrf_input }}
   <div class="card-body">
     <p>SmartZone Public API credentials. The portal uses this to look up
     client hostnames and to issue per-AP <strong>disconnect-client</strong>

@@ -52,6 +52,7 @@
     <div class="card-header"><h2>Decision</h2></div>
     <div class="card-body">
       <form method="post">
+    {{ csrf_input }}
         <label class="field">Approve for
           <select name="duration">
             <option value="86400" selected>1 day</option>
@@ -83,6 +84,7 @@
 
       <hr style="margin:16px 0;border:none;border-top:1px solid var(--border)">
       <form method="post" onsubmit="return confirm('Delete this device record completely? The MAC will be removed from the database — next time it associates, it appears as a fresh unknown device. Audit log entries are kept.');">
+    {{ csrf_input }}
         <button name="action" value="delete" class="btn btn-sm btn-danger" style="opacity:0.85">
           Delete record
         </button>

@@ -18,6 +18,7 @@
       {% endif %}
 
       <form method="post" action="{{ url_for('portal.email_send') }}">
+    {{ csrf_input }}
         <label class="field">Email address
           <input name="email" type="email" required
                  autocapitalize="off" autocorrect="off" spellcheck="false"

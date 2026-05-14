@@ -21,6 +21,7 @@
     </p>
 
     <form method="post" style="margin-top:16px">
+    {{ csrf_input }}
       {% if action == 'approve' %}
         <label class="field">Approve for
           <select name="duration">

@@ -1,15 +1,60 @@
 """Flask app entry. Picks bootstrap mode (setup wizard) or normal mode at
 startup based on config.is_setup_complete()."""
+import hmac
 import logging
 import os
+import secrets as _secrets
 import sys
 
-from flask import Flask, redirect, render_template, url_for
+from flask import Flask, abort, redirect, render_template, request, session, url_for
+from markupsafe import Markup
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from config import config, is_setup_complete, missing_required_keys
 
 log = logging.getLogger(__name__)
+
+
+# Endpoints that legitimately accept POST from outside our own pages — must
+# be exempted from CSRF or they break. Keep this list as small as possible.
+#   - portal.oauth_callback: Google sends us here as a top-level redirect.
+#   - admin.link_action:     the URL token IS the auth; adding CSRF on top
+#                            doesn't increase security and would break the
+#                            email-click-to-approve flow.
+_CSRF_EXEMPT_ENDPOINTS = {
+    "portal.oauth_callback",
+    "admin.link_action",
+}
+
+
+def _csrf_token() -> str:
+    """Per-session CSRF token. Generated lazily, stored in the signed session
+    cookie. Same token reused for the life of the session."""
+    if "_csrf" not in session:
+        session["_csrf"] = _secrets.token_urlsafe(32)
+        session.modified = True
+    return session["_csrf"]
+
+
+def _csrf_check() -> None:
+    """before_request hook. Aborts 400 on state-changing requests that don't
+    carry a valid token. GET/HEAD/OPTIONS bypass; exempt endpoints bypass."""
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return
+    if request.endpoint in _CSRF_EXEMPT_ENDPOINTS:
+        return
+    # Static files don't have an endpoint string that's relevant; skip them.
+    if (request.endpoint or "").endswith(".static"):
+        return
+    submitted = (request.form.get("csrf_token")
+                 or request.headers.get("X-CSRF-Token")
+                 or "")
+    expected = session.get("_csrf", "")
+    if not expected or not submitted or not hmac.compare_digest(submitted, expected):
+        log.warning("csrf: rejected %s %s (endpoint=%s, remote=%s)",
+                    request.method, request.path, request.endpoint,
+                    request.remote_addr)
+        abort(400, description="CSRF token missing or invalid")
 
 
 def _common_app() -> Flask:
@@ -35,6 +80,22 @@ def _common_app() -> Flask:
         and config.PORTAL_BASE_URL.startswith("https://")
     )
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
+    # CSRF protection: every state-changing request needs the matching token.
+    app.before_request(_csrf_check)
+
+    @app.context_processor
+    def inject_csrf():
+        # Templates use `{{ csrf_input }}` to drop a hidden field into a form
+        # without typing the full input markup every time. Marked safe so
+        # autoescaping doesn't HTML-encode the <input> tag.
+        token = _csrf_token()
+        return {
+            "csrf_token": token,
+            "csrf_input": Markup(
+                f'<input type="hidden" name="csrf_token" value="{token}">'
+            ),
+        }
 
     @app.context_processor
     def inject_branding():

@@ -48,6 +48,7 @@
             <form method="post" action="{{ url_for('portal.my_devices_remove', mac=d.mac) }}"
                   onsubmit="return confirm('Remove {{ d.friendly_name or d.mac_display }} from your Wi-Fi?');"
                   style="margin-top:14px">
+    {{ csrf_input }}
               <button type="submit" class="btn btn-sm btn-danger">Remove</button>
             </form>
           {% endif %}

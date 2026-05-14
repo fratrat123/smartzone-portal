@@ -79,6 +79,7 @@
   </div>
 
   <form method="post" action="{{ url_for('admin.bulk') }}" id="bulk-form">
+    {{ csrf_input }}
   <div class="card">
     <div class="card-header">
       <h2>Pending <span class="pill pill-pending">{{ pending|length }}</span></h2>

@@ -19,6 +19,7 @@
       </dl>
 
       <form method="post">
+    {{ csrf_input }}
         <label class="field">
           Device name <span class="hint">(shows up for the admin)</span>
           <input name="friendly_name" type="text" maxlength="128"

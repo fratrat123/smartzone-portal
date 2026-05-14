@@ -3,6 +3,7 @@
 
 {% block step_body %}
 <form id="step-form" method="post" class="card">
+    {{ csrf_input }}
   <div class="card-body">
     <p>Google OAuth is used for admin sign-in (and as the user-facing auth on
     real browsers; the email magic-link path covers iOS CNA).</p>

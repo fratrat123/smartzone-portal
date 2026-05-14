@@ -3,6 +3,7 @@
 
 {% block step_body %}
 <form id="step-form" method="post" class="card">
+    {{ csrf_input }}
   <div class="card-body">
     <label class="field">Portal name
       <input name="brand_name" required maxlength="64"

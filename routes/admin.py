@@ -1,4 +1,10 @@
 """Admin routes — approve/deny pending devices, browse history."""
+import logging
+import os
+import shutil
+import signal
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 
 from functools import wraps
@@ -581,6 +587,79 @@ def link_action(token: str):
             already=False,
             action_taken=action,
         )
+
+
+@bp.route("/factory-reset", methods=["POST"])
+@admin_required
+def factory_reset():
+    """Wipe portal state back to wizard-default — admin-triggered factory
+    reset. Same effect as running deploy/reset-wizard.sh, but no SSH needed.
+
+    Wipes: portal.db, .bootstrap-secret, .wizard-state/, .env (reset to
+    .env.example). Does NOT change network/hostname/packages/cert files.
+
+    After the wipe, sends SIGTERM to the gunicorn master so systemd restarts
+    the service. Without SETUP_COMPLETE=true in .env it'll come up in
+    bootstrap mode at the wizard.
+    """
+    actor = current_user()["email"]
+    log = logging.getLogger(__name__)
+    log.warning("admin: factory reset requested by %s", actor)
+
+    # Audit *before* we wipe so the request is recorded somewhere.
+    # Cheap protection — the DB is about to be deleted anyway, but the
+    # audit entry will be persisted via SQLite's WAL flush before we exit.
+    with SessionLocal() as s:
+        audit(s, "factory_reset", actor=actor, details="initiated")
+        s.commit()
+
+    app_dir = "/opt/captive-portal"
+
+    def _do_reset():
+        # Tiny delay so the HTTP response definitely makes it out.
+        time.sleep(1.5)
+        # Wipe portal state
+        for fname in ("portal.db", "portal.db-journal",
+                      "portal.db-wal", "portal.db-shm", ".bootstrap-secret"):
+            try:
+                os.unlink(os.path.join(app_dir, fname))
+            except FileNotFoundError:
+                pass
+            except OSError as e:
+                log.warning("factory reset: unlink %s failed: %s", fname, e)
+        try:
+            shutil.rmtree(os.path.join(app_dir, ".wizard-state"), ignore_errors=True)
+        except Exception:
+            log.exception("factory reset: rmtree .wizard-state failed")
+        # Reset .env from .env.example so service comes back in bootstrap.
+        try:
+            src = os.path.join(app_dir, ".env.example")
+            dst = os.path.join(app_dir, ".env")
+            shutil.copy2(src, dst)
+            try:
+                import pwd
+                uid = pwd.getpwnam("captive-portal").pw_uid
+                os.chown(dst, uid, uid)
+                os.chmod(dst, 0o640)
+            except (KeyError, OSError):
+                pass
+        except Exception:
+            log.exception("factory reset: failed to reset .env from .env.example")
+
+        # SIGTERM gunicorn master so systemd restarts the whole service
+        # and the new master reads the wiped .env (= bootstrap mode).
+        if os.environ.get("INVOCATION_ID"):
+            log.warning("factory reset: signaling master to restart")
+            try:
+                os.kill(os.getppid(), signal.SIGTERM)
+            except OSError as e:
+                log.warning("factory reset: SIGTERM failed: %s", e)
+            time.sleep(2)
+        os._exit(0)
+
+    threading.Thread(target=_do_reset, name="factory-reset", daemon=True).start()
+
+    return render_template("admin_factory_reset_done.html", actor=actor)
 
 
 def _view(dev: Device, ssids_seen: list[str] | None = None) -> dict:

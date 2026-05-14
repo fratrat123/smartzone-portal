@@ -72,6 +72,15 @@
         <button type="submit" class="btn">Re-run setup wizard…</button>
         <span class="hint" style="margin-left:8px">Walk through branding, SMTP, OAuth, SmartZone, RADIUS, TLS again. Current values pre-fill.</span>
       </form>
+
+      <hr style="margin:18px 0;border:none;border-top:1px solid var(--border)">
+
+      <p style="margin:0 0 8px"><strong style="color:var(--danger)">Danger zone</strong></p>
+      <form method="post" action="{{ url_for('admin.factory_reset') }}"
+            onsubmit="return (prompt('This wipes ALL portal data: device list, audit log, admins added via UI, .env config, wizard state. The box keeps its network and hostname but resets to bootstrap mode (the wizard).\n\nType FACTORY RESET to confirm:') === 'FACTORY RESET');">
+        <button type="submit" class="btn btn-danger">Factory reset…</button>
+        <span class="hint" style="margin-left:8px">Wipes all portal data and reboots into the setup wizard. Network/hostname stay.</span>
+      </form>
     </div>
   </div>
 

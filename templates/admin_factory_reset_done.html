@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Factory reset{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:560px;margin:60px auto;text-align:center">
+  <div class="card-body" style="padding:32px">
+    <div style="font-size:3em;line-height:1;margin-bottom:8px">!</div>
+    <h1 style="margin:0 0 12px">Factory reset in progress</h1>
+    <p>Wiping <code>portal.db</code>, <code>.env</code>,
+    <code>.bootstrap-secret</code>, and the wizard state. Network address
+    and hostname are unchanged.</p>
+    <p>The service is restarting now. systemd will bring it back up in
+    <strong>bootstrap mode</strong> (the setup wizard) within a few seconds.
+    Reload this page or open <code>/setup</code> after about 30s.</p>
+    <p class="muted" style="margin-top:24px;font-size:0.88em">
+      Initiated by <strong>{{ actor }}</strong>. This action is audited.
+    </p>
+  </div>
+</div>
+{% endblock %}

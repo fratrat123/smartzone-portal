@@ -612,6 +612,36 @@ def link_action(token: str):
         )
 
 
+@bp.route("/smartzone-config")
+@admin_required
+def smartzone_config():
+    """Reference page: the values an operator needs to enter into the
+    SmartZone controller. Same content as the wizard's WLAN checklist step,
+    but rendered from the current .env so admins can come back to it any time
+    (e.g. when adding a new WLAN, reconfiguring AAA, or recovering a forgotten
+    shared secret). Admin-auth required; the page exposes the RADIUS shared
+    secret behind a show/hide toggle."""
+    from urllib.parse import urlparse
+    base = (config.PORTAL_BASE_URL or "").rstrip("/")
+    parsed = urlparse(base) if base else None
+    portal_hostname = parsed.hostname if parsed else "your-portal-hostname"
+
+    radius_secret = config.RADIUS_SHARED_SECRET.decode("utf-8", "replace") \
+        if config.RADIUS_SHARED_SECRET else ""
+
+    return render_template(
+        "admin_smartzone_config.html",
+        portal_hostname=portal_hostname,
+        portal_logon_url=f"{base}/portal" if base else "(set PORTAL_BASE_URL in .env)",
+        radius_listen_host=config.RADIUS_LISTEN_HOST,
+        radius_listen_port=config.RADIUS_LISTEN_PORT,
+        radius_secret=radius_secret,
+        radius_mac_format=config.RADIUS_MAC_FORMAT,
+        coa_host=config.COA_HOST,
+        coa_port=config.COA_PORT,
+    )
+
+
 @bp.route("/factory-reset", methods=["POST"])
 @admin_required
 def factory_reset():

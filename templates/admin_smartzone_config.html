@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}SmartZone setup{% endblock %}
+
+{% block topbar %}
+  {% with active='smartzone' %}{% include '_admin_topbar.html' %}{% endwith %}
+{% endblock %}
+
+{% block layout %}
+<div class="page" style="max-width:880px">
+  <div class="page-header">
+    <div>
+      <h1>SmartZone configuration</h1>
+      <p class="subtitle">Values to enter on the controller. Same checklist
+      the wizard shows, kept here for reference any time you need to
+      re-configure SmartZone or set up another zone.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2>1. AAA Authentication Profile</h2></div>
+    <div class="card-body">
+      <p class="muted">Services &amp; Profiles → AAA Servers → Authentication → Create</p>
+      <dl class="kv">
+        <dt>Type</dt><dd>RADIUS</dd>
+        <dt>Primary Server IP</dt>
+        <dd>
+          <code id="radius-ip">(this server's LAN IP)</code>
+          <button type="button" class="btn btn-sm" data-copy="#radius-ip" style="margin-left:8px">Copy</button>
+          <span class="hint" style="margin-left:6px">Run <code>hostname -I</code> on the box</span>
+        </dd>
+        <dt>Port</dt>
+        <dd><code id="radius-port">{{ radius_listen_port }}</code>
+          <button type="button" class="btn btn-sm" data-copy="#radius-port" style="margin-left:8px">Copy</button>
+        </dd>
+        <dt>Shared Secret</dt>
+        <dd>
+          <code id="radius-secret" data-secret="{{ radius_secret }}" style="filter:blur(5px);transition:filter 0.2s;cursor:pointer"
+                title="Click to reveal">••••••••••••••••</code>
+          <button type="button" class="btn btn-sm" id="toggle-secret" style="margin-left:8px">Show</button>
+          <button type="button" class="btn btn-sm" data-copy="#radius-secret" style="margin-left:4px">Copy</button>
+          <p class="hint" style="margin:6px 0 0;font-size:0.85em">
+            Length: {{ radius_secret|length }} chars. Must match the value in
+            <code>.env</code> exactly.
+          </p>
+        </dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2>2. Hotspot (WISPr) Profile</h2></div>
+    <div class="card-body">
+      <p class="muted">Services &amp; Profiles → Hotspots &amp; Portals → Hotspot (WISPr) → Create</p>
+      <dl class="kv">
+        <dt>Smart Client Support</dt><dd>None</dd>
+        <dt>Logon URL</dt><dd>External</dd>
+        <dt>Primary URL</dt>
+        <dd>
+          <code id="logon-url">{{ portal_logon_url }}</code>
+          <button type="button" class="btn btn-sm" data-copy="#logon-url" style="margin-left:8px">Copy</button>
+        </dd>
+        <dt>Redirected MAC Format</dt><dd>AA:BB:CC:DD:EE:FF</dd>
+        <dt>HTTPS Redirect</dt>
+        <dd>
+          ON once you have a TLS cert. OFF until then (HTTPS redirects fail
+          without a real cert on 443).
+        </dd>
+      </dl>
+
+      <p style="margin-top:14px"><strong>Walled Garden</strong> — add every line below:</p>
+      <pre id="walled-garden" style="background:var(--surface-elevated);padding:12px;border-radius:6px;font-size:0.85em;overflow:auto">{{ portal_hostname }}
+*.google.com
+*.googleapis.com
+*.gstatic.com
+*.googleusercontent.com
+accounts.youtube.com
+gmail.com
+mail.google.com</pre>
+      <button type="button" class="btn btn-sm" data-copy="#walled-garden" style="margin-top:6px">Copy walled garden</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2>3. WLAN</h2></div>
+    <div class="card-body">
+      <p class="muted">Wireless LANs → your zone → Create</p>
+      <dl class="kv">
+        <dt>Authentication Type</dt><dd>Hotspot (WISPr)</dd>
+        <dt>Method</dt><dd>MAC Address</dd>
+        <dt>MAC Authentication</dt><dd>OFF (use MAC as password)</dd>
+        <dt>MAC Address Format</dt>
+        <dd>
+          <code id="mac-format">{{ radius_mac_format }}</code>
+          <button type="button" class="btn btn-sm" data-copy="#mac-format" style="margin-left:8px">Copy</button>
+          <span class="hint" style="margin-left:6px">(must match exactly)</span>
+        </dd>
+        <dt>Encryption</dt><dd>None</dd>
+        <dt>Hotspot (WISPr) Portal</dt><dd>profile from step 2</dd>
+        <dt>Authentication Server</dt><dd>profile from step 1</dd>
+        <dt>RADIUS Options → Called Station ID</dt>
+        <dd><strong>AP MAC</strong> (not WLAN BSSID — required for CoA)</dd>
+        <dt>Advanced → Client Fingerprinting</dt><dd>ON</dd>
+        <dt>Advanced → Inactivity Timeout</dt><dd>raise from 120s default</dd>
+      </dl>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2>4. CoA (Change of Authorization)</h2></div>
+    <div class="card-body">
+      <p class="muted">Configured implicitly; the portal sends Disconnect-
+      Messages to your SmartZone controller at:</p>
+      <dl class="kv">
+        <dt>CoA Host</dt><dd><code>{{ coa_host or '(not set)' }}</code></dd>
+        <dt>CoA Port</dt><dd><code>{{ coa_port }}</code></dd>
+        <dt>CoA Secret</dt><dd>same as RADIUS shared secret (Ruckus convention)</dd>
+      </dl>
+    </div>
+  </div>
+
+  <p class="muted" style="text-align:center;margin-top:18px;font-size:0.88em">
+    Need to change any of these? Click <strong>Re-run setup wizard</strong> on the Admins page.
+  </p>
+</div>
+
+<script>
+  // Reveal / hide the RADIUS secret
+  (function() {
+    const code = document.getElementById('radius-secret');
+    const btn = document.getElementById('toggle-secret');
+    if (!code || !btn) return;
+    let shown = false;
+    function refresh() {
+      if (shown) {
+        code.textContent = code.dataset.secret;
+        code.style.filter = 'none';
+        btn.textContent = 'Hide';
+      } else {
+        code.textContent = '••••••••••••••••';
+        code.style.filter = 'blur(5px)';
+        btn.textContent = 'Show';
+      }
+    }
+    btn.addEventListener('click', () => { shown = !shown; refresh(); });
+    code.addEventListener('click', () => { shown = !shown; refresh(); });
+    refresh();
+  })();
+
+  // Copy buttons — read the target element's textContent (or data-secret if set).
+  document.querySelectorAll('[data-copy]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = document.querySelector(btn.dataset.copy);
+      if (!target) return;
+      const text = target.dataset.secret || target.textContent.trim();
+      navigator.clipboard.writeText(text).then(() => {
+        const original = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = original; }, 1200);
+      }).catch(() => {
+        btn.textContent = '(use Ctrl-C)';
+      });
+    });
+  });
+</script>
+{% endblock %}

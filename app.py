@@ -19,13 +19,20 @@ def _common_app() -> Flask:
     app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_for=1)
 
     app.config["SECRET_KEY"] = config.SECRET_KEY
-    # SESSION_COOKIE_SECURE: only when we're actually serving HTTPS. In
-    # bootstrap mode the box is always reachable over plain HTTP (no cert
-    # yet); marking the cookie Secure there means the browser refuses to
-    # send it back, and the wizard session vanishes between requests.
-    # Only enable Secure in normal mode AND when PORTAL_BASE_URL is HTTPS.
+    # SESSION_COOKIE_SECURE: only when we *actually* have a TLS cert installed.
+    # PORTAL_BASE_URL being https isn't enough — that's just *intent*. The
+    # operator may still be browsing via plain http:port-8080 while waiting
+    # for cert issuance, in which case marking cookies Secure would break
+    # OAuth (browser refuses to send Secure cookies over HTTP, so the OAuth
+    # CSRF state token never gets back to the callback → MismatchingStateError).
+    # Tie Secure strictly to "real HTTPS is available."
+    _have_tls = bool(config.TLS_CERT_FILE and config.TLS_KEY_FILE
+                     and os.path.exists(config.TLS_CERT_FILE)
+                     and os.path.exists(config.TLS_KEY_FILE))
     app.config["SESSION_COOKIE_SECURE"] = (
-        is_setup_complete() and config.PORTAL_BASE_URL.startswith("https://")
+        is_setup_complete()
+        and _have_tls
+        and config.PORTAL_BASE_URL.startswith("https://")
     )
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 

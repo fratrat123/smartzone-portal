@@ -17,7 +17,7 @@
         <div class="notice notice-error">{{ error }}</div>
       {% endif %}
 
-      <form method="post" action="{{ url_for('portal.email_send') }}">
+      <form id="email-form" method="post" action="{{ url_for('portal.email_send') }}">
     {{ csrf_input }}
         <label class="field">Email address
           <input name="email" type="email" required
@@ -26,10 +26,16 @@
                  value="{{ prefill_email or '' }}"
                  autocomplete="email">
         </label>
-        <button type="submit" class="btn btn-primary btn-block">Email me a sign-in code</button>
+        <button id="email-submit" type="submit" class="btn btn-primary btn-block">
+          <span id="email-submit-label">Email me a sign-in code</span>
+          <span id="email-submit-spinner" style="display:none">
+            <span class="spinner" aria-hidden="true"></span>
+            Sending — this can take a moment…
+          </span>
+        </button>
       </form>
 
-      <p class="muted" style="text-align:center;font-size:0.85em;margin:18px 0 0">
+      <p id="email-form-hint" class="muted" style="text-align:center;font-size:0.85em;margin:18px 0 0">
         We'll send a 6-digit code and a sign-in link.
       </p>
     </div>
@@ -54,6 +60,46 @@
     Need help? <a href="mailto:{{ support_email }}">{{ support_email }}</a>
   </p>
   {% endif %}
+
+  <style>
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255, 255, 255, 0.5);
+      border-top-color: #fff;
+      border-radius: 50%;
+      vertical-align: -2px;
+      margin-right: 8px;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #email-submit[disabled] { opacity: 0.85; cursor: progress; }
+  </style>
+
+  <script>
+    // SMTP send is synchronous server-side and can take 30–60s on some
+    // relays — without feedback the user thinks the page hung and clicks
+    // Submit again. On form submit, swap the button label to a spinner +
+    // "Sending — this can take a moment…" and disable it so they can't
+    // double-submit. The browser still navigates on form completion, so
+    // no other state to clean up.
+    (function () {
+      const form = document.getElementById('email-form');
+      const btn = document.getElementById('email-submit');
+      const label = document.getElementById('email-submit-label');
+      const spinner = document.getElementById('email-submit-spinner');
+      const hint = document.getElementById('email-form-hint');
+      if (!form) return;
+      form.addEventListener('submit', () => {
+        // Browsers don't submit a disabled button's value, so disable AFTER
+        // the form has started submitting — use setTimeout(0) to defer.
+        label.style.display = 'none';
+        spinner.style.display = 'inline-block';
+        hint.textContent = 'Sending the email — please don\'t close this tab.';
+        setTimeout(() => { btn.setAttribute('disabled', 'disabled'); }, 0);
+      });
+    })();
+  </script>
 
   <script>
     // Poll device status so the user sees a denial immediately even if they

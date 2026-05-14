@@ -125,7 +125,15 @@ def start():
 
 @bp.route("/oauth/login")
 def oauth_login():
-    redirect_uri = config.PORTAL_BASE_URL + url_for("portal.oauth_callback")
+    # Build redirect_uri from the *current request* (not config.PORTAL_BASE_URL)
+    # so it works whether the operator hit us via:
+    #   - https://portal.hillmanschools.com/   (TLS, after cert is issued)
+    #   - http://portal.hillmanschools.com:8080/  (plain HTTP, while no cert)
+    #   - http://localhost:8080/                 (dev)
+    # Each of those needs its own redirect_uri matching what's in Google's
+    # authorized list for the OAuth client. ProxyFix has already mapped any
+    # X-Forwarded-Proto so url_for picks the right scheme.
+    redirect_uri = url_for("portal.oauth_callback", _external=True)
     return oauth.google.authorize_redirect(redirect_uri)
 
 

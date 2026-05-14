@@ -97,6 +97,10 @@ def _common_app() -> Flask:
             ),
         }
 
+    # Cap multipart uploads at 2 MB — only thing being uploaded is the
+    # branding logo. Anything larger almost certainly isn't a logo.
+    app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024
+
     @app.context_processor
     def inject_branding():
         from oauth import current_user
@@ -106,12 +110,28 @@ def _common_app() -> Flask:
             user = current_user()
         except Exception:
             user = None
+
+        # Logo URL: prefer the live-editable Setting (set via the Settings
+        # page's upload form), fall back to the .env value, fall back to no
+        # logo (in which case the first letter of brand_name is rendered).
+        # Bootstrap mode hits the except — no DB, no tables — and just uses
+        # the env value silently.
+        logo_url = config.PORTAL_LOGO_URL
+        try:
+            from db import SessionLocal, get_setting
+            with SessionLocal() as s:
+                db_logo = get_setting(s, "portal_logo_url", "")
+                if db_logo:
+                    logo_url = db_logo
+        except Exception:
+            pass
+
         return {
             "user": user,
             "brand_name": config.PORTAL_BRAND_NAME,
             "brand_mark": (config.PORTAL_BRAND_NAME or "?")[:1].upper(),
             "support_email": config.PORTAL_SUPPORT_EMAIL,
-            "logo_url": config.PORTAL_LOGO_URL,
+            "logo_url": logo_url,
             "email_placeholder": (
                 config.PORTAL_EMAIL_PLACEHOLDER
                 or (f"you@{config.GOOGLE_HOSTED_DOMAIN}" if config.GOOGLE_HOSTED_DOMAIN

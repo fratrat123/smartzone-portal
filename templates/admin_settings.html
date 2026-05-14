@@ -64,6 +64,55 @@
 
   <div class="card">
     <div class="card-header">
+      <h2>Branding</h2>
+      <span class="meta">Logo shown in topbar, portal pages, and emails</span>
+    </div>
+    <div class="card-body">
+      <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">
+        <div style="width:64px;height:64px;border-radius:12px;background:var(--brand-primary-bg);display:grid;place-items:center;overflow:hidden">
+          {% if current_logo_url %}
+            <img src="{{ current_logo_url }}" alt="logo preview"
+                 style="max-width:100%;max-height:100%">
+          {% else %}
+            <span style="font-size:1.6em;font-weight:600;color:var(--brand-primary)">{{ brand_mark }}</span>
+          {% endif %}
+        </div>
+        <div style="flex:1;min-width:240px">
+          <p class="muted" style="margin:0 0 6px;font-size:0.92em">
+            {% if current_logo_url %}
+              Current logo: <code style="font-size:0.9em">{{ current_logo_url }}</code>
+            {% else %}
+              No custom logo. The portal shows the first letter of
+              <code>PORTAL_BRAND_NAME</code> ({{ brand_mark }}) instead.
+            {% endif %}
+          </p>
+          <p class="hint" style="margin:0">
+            PNG / JPG / GIF / WebP / SVG. Up to 2 MB. Square / 1:1 looks best.
+          </p>
+        </div>
+      </div>
+
+      <form method="post" enctype="multipart/form-data" style="margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        {{ csrf_input }}
+        <input type="hidden" name="action" value="upload_logo">
+        <input type="file" name="logo" accept=".png,.jpg,.jpeg,.gif,.webp,.svg,image/*" required>
+        <button type="submit" class="btn btn-primary">Upload</button>
+        {% if current_logo_url %}
+          <span style="margin-left:auto"></span>
+          <button type="submit" class="btn btn-sm btn-danger"
+                  formaction="{{ url_for('admin.settings') }}"
+                  formnovalidate
+                  name="action" value="remove_logo"
+                  onclick="return confirm('Remove the custom logo?');">
+            Remove logo
+          </button>
+        {% endif %}
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
       <h2>Defaults</h2>
       <span class="meta">Behavior tunables, live-editable</span>
     </div>

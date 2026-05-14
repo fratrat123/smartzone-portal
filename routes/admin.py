@@ -9,7 +9,9 @@ from datetime import datetime, timedelta, timezone
 
 from functools import wraps
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from flask import (Blueprint, abort, current_app, flash, redirect,
+                   render_template, request, url_for)
+from werkzeug.utils import secure_filename
 from sqlalchemy import func, select
 
 from action_tokens import TokenError, parse_token
@@ -714,11 +716,18 @@ def settings():
                               details=f"default_approval_seconds={seconds}")
                         s.commit()
 
+        elif action == "upload_logo":
+            error = _handle_logo_upload(actor)
+
+        elif action == "remove_logo":
+            _handle_logo_remove(actor)
+
         if not error:
             return redirect(url_for("admin.settings"))
 
     with SessionLocal() as s:
         default_approval = get_setting(s, "default_approval_seconds", "0")
+        current_logo_url = get_setting(s, "portal_logo_url", "") or config.PORTAL_LOGO_URL or ""
         db_admins = s.scalars(
             select(Admin).order_by(Admin.added_at.desc())
         ).all()
@@ -754,9 +763,76 @@ def settings():
         notify_recipients=notify_view,
         domain=config.GOOGLE_HOSTED_DOMAIN,
         default_approval=int(default_approval),
+        current_logo_url=current_logo_url,
         user=current_user(),
         error=error,
     )
+
+
+# ---- Logo upload helpers --------------------------------------------------
+
+# Conservative: PNG/JPG/GIF/WebP/SVG cover everything anyone reasonably
+# brands a portal with. .ico shows up too poorly at the rendered size.
+_ALLOWED_LOGO_EXTS = {"png", "jpg", "jpeg", "gif", "webp", "svg"}
+
+
+def _handle_logo_upload(actor: str) -> str | None:
+    """Save an uploaded logo into static/uploads and point Setting at it.
+
+    Returns an error message string on failure, or None on success.
+    """
+    f = request.files.get("logo")
+    if not f or not f.filename:
+        return "No file selected."
+
+    safe = secure_filename(f.filename)
+    if "." not in safe:
+        return "File has no extension; can't determine type."
+    ext = safe.rsplit(".", 1)[1].lower()
+    if ext not in _ALLOWED_LOGO_EXTS:
+        return f"Unsupported file type .{ext}. Use {', '.join(sorted(_ALLOWED_LOGO_EXTS))}."
+
+    # Always write to the same canonical name (logo.<ext>) so the old logo
+    # gets overwritten on each upload. Clean up any other-extension copies
+    # first so /static/uploads doesn't accumulate orphans.
+    upload_dir = os.path.join(current_app.static_folder, "uploads")
+    os.makedirs(upload_dir, exist_ok=True)
+    for old_ext in _ALLOWED_LOGO_EXTS:
+        old_path = os.path.join(upload_dir, f"logo.{old_ext}")
+        if old_ext != ext and os.path.exists(old_path):
+            try:
+                os.unlink(old_path)
+            except OSError:
+                pass
+
+    target_path = os.path.join(upload_dir, f"logo.{ext}")
+    f.save(target_path)
+    # Cache-bust the URL so browsers immediately pick up the new image.
+    url = url_for("static", filename=f"uploads/logo.{ext}") + f"?v={int(time.time())}"
+
+    with SessionLocal() as s:
+        set_setting(s, "portal_logo_url", url, actor=actor)
+        audit(s, "setting_update", actor=actor,
+              details=f"portal_logo_url <- uploaded {safe} ({os.path.getsize(target_path)} bytes)")
+        s.commit()
+    return None
+
+
+def _handle_logo_remove(actor: str) -> None:
+    """Clear the logo Setting and delete any uploaded file under static/uploads."""
+    upload_dir = os.path.join(current_app.static_folder, "uploads")
+    for ext in _ALLOWED_LOGO_EXTS:
+        p = os.path.join(upload_dir, f"logo.{ext}")
+        try:
+            os.unlink(p)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            pass
+    with SessionLocal() as s:
+        set_setting(s, "portal_logo_url", "", actor=actor)
+        audit(s, "setting_update", actor=actor, details="portal_logo_url cleared")
+        s.commit()
 
 
 @bp.route("/link/<token>", methods=["GET", "POST"])

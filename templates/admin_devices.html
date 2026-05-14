@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}Devices{% endblock %}
+
+{% block topbar %}
+  {% with active='devices' %}{% include '_admin_topbar.html' %}{% endwith %}
+{% endblock %}
+
+{% block layout %}
+<div class="page">
+  <div class="page-header">
+    <div>
+      <h1>Devices</h1>
+      <p class="subtitle">{{ total_all }} total registered. Filter, search, manage in bulk.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <form method="get" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap">
+        <label class="field" style="margin:0">Status
+          <select name="status" onchange="this.form.submit()" style="margin-top:0;width:auto">
+            <option value="" {% if not status_filter %}selected{% endif %}>All ({{ total_all }})</option>
+            <option value="pending"  {% if status_filter == 'pending' %}selected{% endif %}>Pending ({{ status_counts.get('pending', 0) }})</option>
+            <option value="approved" {% if status_filter == 'approved' %}selected{% endif %}>Approved ({{ status_counts.get('approved', 0) }})</option>
+            <option value="denied"   {% if status_filter == 'denied' %}selected{% endif %}>Denied ({{ status_counts.get('denied', 0) }})</option>
+            <option value="expired"  {% if status_filter == 'expired' %}selected{% endif %}>Expired ({{ status_counts.get('expired', 0) }})</option>
+            <option value="ignored"  {% if status_filter == 'ignored' %}selected{% endif %}>Ignored ({{ status_counts.get('ignored', 0) }})</option>
+          </select>
+        </label>
+        <label class="field" style="margin:0;flex:1;min-width:240px">Search
+          <input name="q" value="{{ q }}"
+                 placeholder="email, MAC, hostname, friendly name, SSID">
+        </label>
+        <button class="btn">Apply</button>
+        {% if status_filter or q %}
+          <a href="{{ url_for('admin.devices') }}" class="muted" style="padding:0 8px">clear</a>
+        {% endif %}
+      </form>
+      {% if status_filter or q %}
+        <p class="muted" style="margin:10px 0 0;font-size:0.88em">
+          Showing {{ total }} match{{ '' if total == 1 else 'es' }}.
+        </p>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if not devices %}
+    <div class="card">
+      <div class="card-body">
+        <div class="empty">
+          <div class="empty-icon">·</div>
+          <div>{% if q or status_filter %}No devices match.{% else %}No devices yet.{% endif %}</div>
+        </div>
+      </div>
+    </div>
+  {% else %}
+    <form method="post" action="{{ url_for('admin.bulk') }}" id="bulk-form">
+      {{ csrf_input }}
+      <div class="card">
+        <div class="card-body compact" style="overflow-x:auto">
+          <table class="data-list">
+            <thead>
+              <tr>
+                <th style="width:36px"><input type="checkbox" id="select-all" title="Select all"></th>
+                <th>Status</th>
+                <th>User</th>
+                <th>Device</th>
+                <th>MAC</th>
+                <th>SSID</th>
+                <th>Requested</th>
+                <th>Expires</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+            {% for d in devices %}
+              <tr>
+                <td><input type="checkbox" name="mac" value="{{ d.mac }}" class="row-check"></td>
+                <td><span class="pill pill-{{ d.status }}">{{ d.status|capitalize }}</span></td>
+                <td>{{ d.requested_by_email or '—' }}</td>
+                <td>{{ d.friendly_name or d.device_type_label }}</td>
+                <td><code class="muted">{{ d.mac_display }}</code></td>
+                <td>
+                  {{ d.last_seen_ssid or '—' }}
+                  {% if d.ssids_seen and d.ssids_seen|length > 1 %}
+                    <span class="muted" title="Also seen on: {{ d.ssids_seen[1:]|join(', ') }}">+{{ d.ssids_seen|length - 1 }}</span>
+                  {% endif %}
+                </td>
+                <td>{{ d.requested_at.strftime('%Y-%m-%d %H:%M') if d.requested_at else '—' }}</td>
+                <td>
+                  {% if d.status == 'approved' and d.approved_until %}{{ d.approved_until.strftime('%Y-%m-%d %H:%M') }}
+                  {% elif d.status == 'approved' %}forever
+                  {% else %}—{% endif %}
+                </td>
+                <td class="actions">
+                  <a href="{{ url_for('admin.device', mac=d.mac) }}" class="btn btn-sm">Manage</a>
+                </td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="bulk-bar" style="display:none;position:sticky;bottom:0;padding:14px 20px;border-top:2px solid var(--brand-primary);background:var(--brand-primary-bg);align-items:center;flex-wrap:wrap;gap:10px;margin-top:14px;border-radius:6px;box-shadow:0 -4px 12px rgba(0,0,0,0.08)">
+        <span style="font-weight:600"><span id="bulk-count">0</span> selected</span>
+        <label class="muted" style="margin:0">Approve for
+          <select name="duration" style="margin-top:0;display:inline-block;width:auto">
+            <option value="86400" selected>1 day</option>
+            <option value="604800">7 days</option>
+            <option value="2592000">30 days</option>
+            <option value="0">Forever</option>
+          </select>
+        </label>
+        <div class="row" style="margin-left:auto;gap:6px">
+          <button name="bulk_action" value="approve" class="btn btn-sm btn-success">Approve</button>
+          <button name="bulk_action" value="deny" class="btn btn-sm btn-danger">Deny</button>
+          <button name="bulk_action" value="ignore" class="btn btn-sm">Ignore</button>
+          <button name="bulk_action" value="delete" class="btn btn-sm btn-danger"
+                  onclick="return confirm('Delete selected device records? They will be removed from the database. Audit log entries are kept.');">
+            Delete
+          </button>
+        </div>
+      </div>
+    </form>
+
+    {% if total_pages > 1 %}
+      <div style="display:flex;justify-content:center;gap:8px;align-items:center;margin:20px 0">
+        {% set qstr = ('status=' ~ status_filter if status_filter) ~ ('&q=' ~ q if q) %}
+        {% if page > 1 %}
+          <a href="?{{ qstr }}{% if qstr %}&{% endif %}page={{ page - 1 }}" class="btn btn-sm">← Prev</a>
+        {% endif %}
+        <span class="muted">Page {{ page }} of {{ total_pages }} · {{ total }} result{{ '' if total == 1 else 's' }}</span>
+        {% if page < total_pages %}
+          <a href="?{{ qstr }}{% if qstr %}&{% endif %}page={{ page + 1 }}" class="btn btn-sm">Next →</a>
+        {% endif %}
+      </div>
+    {% endif %}
+  {% endif %}
+
+  <script>
+    (function () {
+      const all = document.getElementById('select-all');
+      const rows = document.querySelectorAll('.row-check');
+      const bar = document.getElementById('bulk-bar');
+      const count = document.getElementById('bulk-count');
+      function refresh() {
+        const n = Array.from(rows).filter(r => r.checked).length;
+        if (count) count.textContent = n;
+        if (bar) bar.style.display = n > 0 ? 'flex' : 'none';
+        if (all) all.checked = n > 0 && n === rows.length;
+      }
+      if (all) all.addEventListener('change', e => {
+        rows.forEach(r => r.checked = e.target.checked);
+        refresh();
+      });
+      rows.forEach(r => r.addEventListener('change', refresh));
+    })();
+  </script>
+</div>
+{% endblock %}

@@ -161,6 +161,86 @@ def queue():
     )
 
 
+@bp.route("/devices")
+@admin_required
+def devices():
+    """Full device list — every device the portal has ever seen, regardless of
+    status. Filter by status, search by email/MAC/hostname/friendly name,
+    paginate, bulk-act. This is the management view; /admin/queue stays as
+    the 'what needs attention right now' view.
+    """
+    from sqlalchemy import or_
+    from macfmt import canonical as _canonical
+
+    status_filter = (request.args.get("status") or "").strip()
+    q = (request.args.get("q") or "").strip()
+    try:
+        page = max(1, int(request.args.get("page", "1")))
+    except ValueError:
+        page = 1
+    per_page = 50
+
+    with SessionLocal() as s:
+        query = select(Device)
+        if status_filter and status_filter != "all":
+            query = query.where(Device.status == status_filter)
+        if q:
+            ql = q.lower()
+            conditions = [
+                Device.requested_by_email.ilike(f"%{ql}%"),
+                Device.hostname.ilike(f"%{ql}%"),
+                Device.friendly_name.ilike(f"%{ql}%"),
+                Device.decided_by_email.ilike(f"%{ql}%"),
+                Device.last_seen_ssid.ilike(f"%{ql}%"),
+            ]
+            # If the input parses as a MAC, also try exact match.
+            try:
+                conditions.append(Device.mac == _canonical(q))
+            except ValueError:
+                pass
+            query = query.where(or_(*conditions))
+
+        total = s.scalar(select(func.count()).select_from(query.subquery())) or 0
+        total_pages = max(1, (total + per_page - 1) // per_page)
+        rows = s.scalars(
+            query.order_by(
+                Device.requested_at.desc().nullslast(),
+                Device.last_seen_at.desc().nullslast(),
+            ).limit(per_page).offset((page - 1) * per_page)
+        ).all()
+
+        macs_on_page = {d.mac for d in rows}
+        ssids_by_mac: dict[str, list[str]] = {}
+        if macs_on_page:
+            for mac, ssid in s.execute(
+                select(DeviceSsidSeen.mac, DeviceSsidSeen.ssid)
+                .where(DeviceSsidSeen.mac.in_(macs_on_page))
+                .order_by(DeviceSsidSeen.last_seen_at.desc())
+            ).all():
+                ssids_by_mac.setdefault(mac, []).append(ssid)
+
+        # Per-status counts for the filter dropdown labels.
+        status_counts: dict[str, int] = {}
+        for st, cnt in s.execute(
+            select(Device.status, func.count()).group_by(Device.status)
+        ).all():
+            status_counts[st] = int(cnt)
+        total_all = sum(status_counts.values())
+
+    return render_template(
+        "admin_devices.html",
+        devices=[_view(d, ssids_by_mac.get(d.mac)) for d in rows],
+        status_filter=status_filter,
+        q=q,
+        page=page,
+        total=total,
+        total_all=total_all,
+        total_pages=total_pages,
+        status_counts=status_counts,
+        user=current_user(),
+    )
+
+
 @bp.route("/queue.json")
 @admin_required
 def queue_status():

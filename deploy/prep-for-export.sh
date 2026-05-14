@@ -28,6 +28,18 @@ systemctl stop captive-portal.service 2>/dev/null || true
 log "Resetting portal data"
 # Wipe the SQLite DB if present — recipient starts with no devices on file.
 rm -f "${APP_DIR}/portal.db" "${APP_DIR}/portal.db-journal" "${APP_DIR}/portal.db-wal" "${APP_DIR}/portal.db-shm"
+# Wipe wizard-session crypto material so no recipient inherits the operator's
+# random keys or half-typed wizard input.
+rm -f "${APP_DIR}/.bootstrap-secret"
+rm -rf "${APP_DIR}/.wizard-state"
+# Wipe the .git directory entirely — leaks the build-operator's git config
+# (name, email, remote URL, possibly cached credentials in
+# ~/.git-credentials). Recipient doesn't need git history to operate the
+# appliance; if they ever want to update, they re-clone fresh.
+rm -rf "${APP_DIR}/.git"
+# Pyc/pycache leftovers from the operator's testing
+find "${APP_DIR}" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+find "${APP_DIR}" -type f -name '*.pyc' -delete 2>/dev/null || true
 # Reset .env back to .env.example so the portal boots into bootstrap mode.
 if [[ -f "${APP_DIR}/.env.example" ]]; then
     install -m 0640 -o "${APP_USER}" -g "${APP_USER}" "${APP_DIR}/.env.example" "${APP_DIR}/.env"
@@ -107,6 +119,27 @@ for h in /root/.bash_history /home/*/.bash_history; do
 done
 history -c 2>/dev/null || true
 
+log "Wiping operator's per-user identity files"
+# Anything the build-operator might have configured in their shell:
+# git identity, ssh known_hosts/authorized_keys, etc. Don't leak to recipient.
+for home in /root /home/*; do
+    [[ -d "$home" ]] || continue
+    rm -f  "$home"/.gitconfig \
+           "$home"/.git-credentials \
+           "$home"/.lesshst \
+           "$home"/.viminfo \
+           "$home"/.python_history \
+           "$home"/.sudo_as_admin_successful
+    rm -rf "$home"/.cache "$home"/.local
+    # SSH state: the operator's authorized_keys would let them back in on the
+    # recipient's box. The operator's known_hosts is just record of what they
+    # connected to from here. Both gone.
+    rm -rf "$home"/.ssh
+done
+
+log "Clearing /tmp"
+rm -rf /tmp/* /tmp/.[!.]* /var/tmp/* 2>/dev/null || true
+
 log "Cleaning apt caches"
 apt-get clean
 rm -rf /var/lib/apt/lists/*
@@ -122,14 +155,50 @@ if [[ "${PREP_NO_ZEROFREE:-0}" != "1" ]]; then
     fi
 fi
 
-cat <<'EOF'
+log "Verifying wipe"
+PROBLEMS=0
+check_missing() {
+    if [[ -e "$1" ]]; then
+        warn "  STILL EXISTS: $1"
+        PROBLEMS=$((PROBLEMS + 1))
+    fi
+}
+check_empty() {
+    if [[ -s "$1" ]]; then
+        warn "  NOT EMPTY: $1 (size=$(stat -c%s "$1") bytes)"
+        PROBLEMS=$((PROBLEMS + 1))
+    fi
+}
+
+check_missing "${APP_DIR}/portal.db"
+check_missing "${APP_DIR}/.bootstrap-secret"
+check_missing "${APP_DIR}/.wizard-state"
+check_missing "${APP_DIR}/.git"
+check_missing /root/.bash_history.1
+check_missing /root/.gitconfig
+check_missing /root/.ssh
+check_missing /home/*/.ssh
+check_missing /etc/ssh/ssh_host_rsa_key
+check_empty /etc/machine-id
+check_empty /root/.bash_history
+
+if [[ ${PROBLEMS} -gt 0 ]]; then
+    warn "${PROBLEMS} item(s) need attention before this VM is safe to ship."
+else
+    log "All checks passed."
+fi
+
+cat <<EOF
 
 ================================================================
-  Appliance is ready to export.
-  Next steps:
+  Appliance prep complete${PROBLEMS:+ (${PROBLEMS} warnings above)}.
+
+  Before exporting OVA in ESXi:
     1. shutdown -h now
-    2. In ESXi: VM -> Export -> OVF Template (or Export OVA)
-    3. Ship the .ova to the recipient.
+    2. In ESXi inventory, RIGHT-CLICK VM -> Snapshots ->
+       DELETE ALL snapshots (otherwise the OVA bundles them)
+    3. VM -> Export -> Export OVF Template (single .ova)
+    4. Ship the .ova to the recipient.
 
   Recipient experience:
     - Import OVA in ESXi

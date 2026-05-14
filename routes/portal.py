@@ -27,7 +27,18 @@ from email_sender import send_verification_email
 from macfmt import canonical, display_colon
 from notifications import notify_new_pending
 from oauth import current_user, is_admin, oauth, verify_workspace
+import rate_limit
 from smartzone import sz_client
+
+
+# Rate limits for /portal/email/send. Tuned for the captive portal flow:
+# a real user might typo once and retry, but shouldn't need many sends.
+#   per-IP:    5 sends / minute  — stops a single attacker on the SSID
+#   per-email: 5 sends / hour    — stops spamming a target inbox
+_RL_SEND_IP_LIMIT = 5
+_RL_SEND_IP_WINDOW = 60
+_RL_SEND_DEST_LIMIT = 5
+_RL_SEND_DEST_WINDOW = 3600
 
 log = logging.getLogger(__name__)
 
@@ -199,6 +210,28 @@ def email_send():
         return render_template(
             "portal_login.html",
             error=f"Please use a {('@' + config.GOOGLE_HOSTED_DOMAIN) if config.GOOGLE_HOSTED_DOMAIN else 'valid'} email address.",
+            prefill_email=email,
+        )
+
+    # Rate limit. Two scopes:
+    #   per source IP — stops one bad actor from spamming many addresses
+    #   per destination — stops one bad actor from spamming one address
+    # We always show the same 'check your email' UX whether or not we
+    # actually sent, so we don't leak whether an address is real / rate-limited.
+    client_ip = request.remote_addr or ""
+    rate_limit.gc()
+    ip_ok = rate_limit.check("email-send-ip", client_ip,
+                             limit=_RL_SEND_IP_LIMIT,
+                             window_seconds=_RL_SEND_IP_WINDOW)
+    dest_ok = rate_limit.check("email-send-dest", email,
+                               limit=_RL_SEND_DEST_LIMIT,
+                               window_seconds=_RL_SEND_DEST_WINDOW)
+    if not (ip_ok and dest_ok):
+        log.warning("portal: email send rate-limited (ip=%s dest=%s ip_ok=%s dest_ok=%s)",
+                    client_ip, email, ip_ok, dest_ok)
+        return render_template(
+            "portal_login.html",
+            error="Too many requests just now. Please wait a minute and try again.",
             prefill_email=email,
         )
 

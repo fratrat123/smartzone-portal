@@ -55,10 +55,10 @@
     {{ csrf_input }}
         <label class="field">Approve for
           <select name="duration">
-            <option value="86400" selected>1 day</option>
-            <option value="604800">7 days</option>
-            <option value="2592000">30 days</option>
-            <option value="0">Forever</option>
+            <option value="86400"   {% if default_approval_seconds == 86400 %}selected{% endif %}>1 day</option>
+            <option value="604800"  {% if default_approval_seconds == 604800 %}selected{% endif %}>7 days</option>
+            <option value="2592000" {% if default_approval_seconds == 2592000 %}selected{% endif %}>30 days</option>
+            <option value="0"       {% if default_approval_seconds == 0 %}selected{% endif %}>Forever</option>
           </select>
         </label>
 

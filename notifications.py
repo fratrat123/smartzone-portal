@@ -66,8 +66,11 @@ def _portal_url(path: str = "/admin/") -> str:
     return config.PORTAL_BASE_URL.rstrip("/") + path
 
 
-def _link(mac: str, recipient_email: str, action: str) -> str:
-    return _portal_url(f"/admin/link/{make_token(mac, recipient_email, action)}")
+def _link(mac: str, recipient_email: str, action: str,
+          duration_seconds: int | None = None) -> str:
+    token = make_token(mac, recipient_email, action,
+                       duration_seconds=duration_seconds)
+    return _portal_url(f"/admin/link/{token}")
 
 
 def notify_new_pending(*, mac: str, mac_display: str, requested_by_email: str | None,
@@ -89,7 +92,8 @@ def notify_new_pending(*, mac: str, mac_display: str, requested_by_email: str | 
     )
 
     def _build_email(recipient: str) -> tuple[str, str, str]:
-        approve = _link(mac, recipient, "approve")
+        approve_1d = _link(mac, recipient, "approve", duration_seconds=86400)
+        approve_forever = _link(mac, recipient, "approve", duration_seconds=0)
         deny = _link(mac, recipient, "deny")
         subject = f"[{brand}] New request: {name}"
         text_body = (
@@ -100,12 +104,14 @@ def notify_new_pending(*, mac: str, mac_display: str, requested_by_email: str | 
             f"Hostname:     {hostname or '(unknown)'}\n"
             f"Device type:  {device_type or '—'}\n"
             f"SSID:         {ssid or '—'}\n\n"
-            f"Approve (1 day): {approve}\n"
+            f"Approve forever: {approve_forever}\n"
+            f"Approve 1 day:   {approve_1d}\n"
             f"Deny:            {deny}\n\n"
             f"Or open the queue: {queue_url}\n"
             f"\n"
             f"The links above are tied to {recipient} and require a confirmation\n"
-            f"click on the next page. They expire in 7 days.\n"
+            f"click on the next page (where you can change the duration before\n"
+            f"submitting). They expire in 7 days.\n"
         )
         html_body = f"""<!doctype html>
 <html><body style="font-family:-apple-system,BlinkMacSystemFont,system-ui,Segoe UI,Roboto,sans-serif;color:#222;max-width:560px">
@@ -120,12 +126,14 @@ def notify_new_pending(*, mac: str, mac_display: str, requested_by_email: str | 
   <tr><td style="color:#888;padding:2px 12px 2px 0">SSID</td><td>{ssid or '—'}</td></tr>
 </table>
 <p style="margin:18px 0">
-  <a href="{approve}" style="background:#16a34a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:600;display:inline-block;margin-right:8px">Approve (1 day)</a>
+  <a href="{approve_forever}" style="background:#16a34a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:600;display:inline-block;margin-right:6px">Approve forever</a>
+  <a href="{approve_1d}" style="background:#16a34a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:600;display:inline-block;margin-right:6px;opacity:0.9">Approve 1 day</a>
   <a href="{deny}" style="background:#dc2626;color:#fff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:600;display:inline-block">Deny</a>
 </p>
 <p style="color:#888;font-size:0.85em">
-  These links are tied to <strong>{recipient}</strong> and require a confirmation click on the next page.
-  They expire in 7 days. Or <a href="{queue_url}">open the admin queue</a>.
+  Each link is tied to <strong>{recipient}</strong> and requires a confirmation
+  click on the next page (you can change the duration there before submitting).
+  Links expire in 7 days. Or <a href="{queue_url}">open the admin queue</a>.
 </p>
 </body></html>
 """

@@ -86,6 +86,36 @@ class Admin(Base):
     note: Mapped[str | None] = mapped_column(Text)
 
 
+class Setting(Base):
+    """Generic key-value store for live-editable runtime settings (things that
+    should NOT live in .env because they're tunable from the admin UI without
+    a restart). Keep this small — for anything that's a real config concern
+    or a secret, use .env instead.
+
+    Use get_setting() / set_setting() helpers; don't query directly."""
+    __tablename__ = "settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_by_email: Mapped[str | None] = mapped_column(String(255))
+
+
+def get_setting(session, key: str, default: str = "") -> str:
+    row = session.get(Setting, key)
+    return row.value if row else default
+
+
+def set_setting(session, key: str, value: str, *, actor: str | None = None) -> None:
+    row = session.get(Setting, key)
+    if row:
+        row.value = value
+        row.updated_at = datetime.utcnow()
+        row.updated_by_email = actor
+    else:
+        session.add(Setting(key=key, value=value, updated_by_email=actor))
+
+
 class ExtraNotifyRecipient(Base):
     """Extra (non-admin) email addresses that receive new-pending-device
     notifications. Admins automatically get notifications (no row needed in

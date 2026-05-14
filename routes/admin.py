@@ -15,13 +15,40 @@ from sqlalchemy import func, select
 from action_tokens import TokenError, parse_token
 from coa import disconnect as coa_disconnect
 from config import config
-from db import Admin, AuditLog, Device, DeviceSsidSeen, ExtraNotifyRecipient, SessionLocal, audit
+from db import (Admin, AuditLog, Device, DeviceSsidSeen, ExtraNotifyRecipient,
+                SessionLocal, Setting, audit, get_setting, set_setting)
 from device_types import DEVICE_TYPES_BY_KEY
 from macfmt import display_colon
 from oauth import current_user, is_admin, is_bootstrap_admin
 from smartzone import sz_client
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
+
+
+@bp.app_context_processor
+def inject_admin_defaults():
+    """Make the operator-configured default approval duration available to
+    every template, so all the duration dropdowns can pre-select the right
+    option without each route having to pass it explicitly."""
+    try:
+        with SessionLocal() as s:
+            try:
+                v = int(get_setting(s, "default_approval_seconds", "0"))
+            except (ValueError, TypeError):
+                v = 0
+    except Exception:
+        v = 0
+    return {"default_approval_seconds": v}
+
+
+def _default_approval_seconds() -> int:
+    """Read the operator-configured default approval duration. 0 = forever.
+    Defaults to 0 if unset (the appliance ships approving-forever)."""
+    with SessionLocal() as s:
+        try:
+            return int(get_setting(s, "default_approval_seconds", "0"))
+        except (ValueError, TypeError):
+            return 0
 
 
 def admin_required(view):
@@ -299,11 +326,13 @@ def device(mac):
             if action in ("approve", "deny", "ignore", "reset"):
                 now = datetime.now(timezone.utc)
                 if action == "approve":
-                    # Duration in seconds; 0 = forever
+                    # Duration in seconds; 0 = forever. Fallback is the
+                    # operator-configured default from Settings.
+                    default = _default_approval_seconds()
                     try:
-                        duration = int(request.form.get("duration", "86400"))
+                        duration = int(request.form.get("duration", str(default)))
                     except ValueError:
-                        duration = 86400  # 1 day default
+                        duration = default
                     dev.status = "approved"
                     dev.decided_by_email = actor
                     dev.decided_at = now
@@ -392,10 +421,11 @@ def bulk():
 
     actor = current_user()["email"]
     now = datetime.now(timezone.utc)
+    default = _default_approval_seconds()
     try:
-        duration = int(request.form.get("duration", "86400"))
+        duration = int(request.form.get("duration", str(default)))
     except ValueError:
-        duration = 86400
+        duration = default
 
     ap_macs_for_kick: list[tuple[str, str | None]] = []
     with SessionLocal() as s:
@@ -492,9 +522,10 @@ def audit_view():
     )
 
 
-@bp.route("/admins", methods=["GET", "POST"])
+@bp.route("/settings", methods=["GET", "POST"])
+@bp.route("/admins", methods=["GET", "POST"])    # backward compat
 @admin_required
-def admins():
+def settings():
     actor = current_user()["email"]
     error = None
 
@@ -565,10 +596,27 @@ def admins():
                     audit(s, "notify_remove", actor=actor, details=f"removed {email}")
                     s.commit()
 
+        elif action == "set_default_approval":
+            raw = (request.form.get("default_approval") or "").strip()
+            try:
+                seconds = int(raw)
+            except ValueError:
+                error = "Invalid duration."
+            else:
+                if seconds < 0:
+                    error = "Duration must be 0 (forever) or positive."
+                else:
+                    with SessionLocal() as s:
+                        set_setting(s, "default_approval_seconds", str(seconds), actor=actor)
+                        audit(s, "setting_update", actor=actor,
+                              details=f"default_approval_seconds={seconds}")
+                        s.commit()
+
         if not error:
-            return redirect(url_for("admin.admins"))
+            return redirect(url_for("admin.settings"))
 
     with SessionLocal() as s:
+        default_approval = get_setting(s, "default_approval_seconds", "0")
         db_admins = s.scalars(
             select(Admin).order_by(Admin.added_at.desc())
         ).all()
@@ -597,12 +645,13 @@ def admins():
     bootstrap = sorted(config.ADMIN_EMAILS)
     env_notify = sorted(config.NOTIFY_EMAILS)
     return render_template(
-        "admin_admins.html",
+        "admin_settings.html",
         bootstrap_admins=bootstrap,
         db_admins=db_admins_view,
         env_notify=env_notify,
         notify_recipients=notify_view,
         domain=config.GOOGLE_HOSTED_DOMAIN,
+        default_approval=int(default_approval),
         user=current_user(),
         error=error,
     )
@@ -618,7 +667,7 @@ def link_action(token: str):
     auto-trigger decisions.
     """
     try:
-        mac, recipient_email, action = parse_token(token)
+        mac, recipient_email, action, token_duration = parse_token(token)
     except TokenError as e:
         return render_template("admin_link_error.html", error=str(e)), 400
 
@@ -649,15 +698,25 @@ def link_action(token: str):
                 action=action,
                 recipient_email=recipient_email,
                 token=token,
+                # Pre-select what the email link asked for. Falls back to
+                # the operator's configured default if the token doesn't
+                # carry one (older links from before the duration encoding).
+                preselect_duration=(
+                    token_duration if token_duration is not None
+                    else _default_approval_seconds()
+                ),
             )
 
         # POST: do it.
         now = datetime.now(timezone.utc)
         if action == "approve":
+            # Order of preference: explicit form value > token-encoded > default.
+            fallback = token_duration if token_duration is not None \
+                else _default_approval_seconds()
             try:
-                duration = int(request.form.get("duration", "86400"))
+                duration = int(request.form.get("duration", str(fallback)))
             except ValueError:
-                duration = 86400
+                duration = fallback
             dev.status = "approved"
             dev.approved_until = (now + timedelta(seconds=duration)) if duration > 0 else None
         elif action == "deny":
@@ -670,6 +729,8 @@ def link_action(token: str):
         audit_details = "via=magic_link"
         if action == "approve" and dev.approved_until:
             audit_details = f"until={dev.approved_until.isoformat()} {audit_details}"
+        elif action == "approve":
+            audit_details = f"forever {audit_details}"
         audit(s, action, mac=mac, actor=recipient_email, details=audit_details)
         s.commit()
 

@@ -1,16 +1,16 @@
 {% extends "base.html" %}
-{% block title %}Manage admins{% endblock %}
+{% block title %}Settings{% endblock %}
 
 {% block topbar %}
-  {% with active='admins' %}{% include '_admin_topbar.html' %}{% endwith %}
+  {% with active='settings' %}{% include '_admin_topbar.html' %}{% endwith %}
 {% endblock %}
 
 {% block layout %}
 <div class="page" style="max-width:880px">
   <div class="page-header">
     <div>
-      <h1>Manage admins</h1>
-      <p class="subtitle">Anyone listed here can approve, deny, or ignore device requests.</p>
+      <h1>Settings</h1>
+      <p class="subtitle">Admins, notifications, defaults, system actions.</p>
     </div>
   </div>
 
@@ -59,6 +59,29 @@
           </tbody>
         </table>
       {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2>Defaults</h2>
+      <span class="meta">Behavior tunables, live-editable</span>
+    </div>
+    <div class="card-body">
+      <form method="post">
+        {{ csrf_input }}
+        <input type="hidden" name="action" value="set_default_approval">
+        <label class="field">Default approval duration
+          <select name="default_approval">
+            <option value="0"       {% if default_approval == 0 %}selected{% endif %}>Forever</option>
+            <option value="86400"   {% if default_approval == 86400 %}selected{% endif %}>1 day</option>
+            <option value="604800"  {% if default_approval == 604800 %}selected{% endif %}>7 days</option>
+            <option value="2592000" {% if default_approval == 2592000 %}selected{% endif %}>30 days</option>
+          </select>
+          <span class="hint">Pre-selected when an admin approves a device. Each approval can still pick a different duration on the spot.</span>
+        </label>
+        <button type="submit" class="btn">Save</button>
+      </form>
     </div>
   </div>
 

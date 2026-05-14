@@ -361,13 +361,17 @@ def device(mac):
 def _device_post(mac: str):
     """Handle approve/deny/ignore/reset/delete from the device detail form.
 
-    Structured so the kick runs *outside* the session that wrote the status
-    change. Previously the kick was inside an outer `with s:` and opened a
-    nested `with s2:` for the kick-sent audit. Because SessionLocal is a
-    `scoped_session`, both handles resolve to the same thread-local session,
-    so the inner `close()` ended the connection for the outer with too —
-    and downstream redirects (and the next request hitting the queue) saw
-    stale data, making the approve look like it never happened.
+    Critical: any helper that opens its own `with SessionLocal() as s:` must
+    be called BEFORE we enter our own outer `with` block, never inside it.
+    SessionLocal is a `scoped_session` keyed on the thread, so a nested
+    `with` resolves to the *same* session — and its inner __exit__ calls
+    close()/expunge_all() on it, detaching every object loaded by the outer
+    block (including `dev`). Subsequent attribute changes on `dev` then have
+    no session to track them, so the commit() at the end of the outer block
+    flushes nothing for the device row even though the audit row goes
+    through fine. The previous bug-fix attempt moved the kick out of the
+    outer with but left `_default_approval_seconds()` inside, so the device
+    row UPDATE was still being silently dropped.
     """
     log = logging.getLogger(__name__)
     action = request.form.get("action")
@@ -377,6 +381,16 @@ def _device_post(mac: str):
 
     if action not in ("approve", "deny", "ignore", "reset", "delete"):
         abort(400)
+
+    # Resolve approval duration *before* opening the outer session — see the
+    # docstring above for why nesting matters.
+    duration = 0
+    if action == "approve":
+        default = _default_approval_seconds()
+        try:
+            duration = int(request.form.get("duration", str(default)))
+        except ValueError:
+            duration = default
 
     ap_mac: str | None = None
     with SessionLocal() as s:
@@ -397,11 +411,6 @@ def _device_post(mac: str):
 
         now = datetime.now(timezone.utc)
         if action == "approve":
-            default = _default_approval_seconds()
-            try:
-                duration = int(request.form.get("duration", str(default)))
-            except ValueError:
-                duration = default
             dev.status = "approved"
             dev.decided_by_email = actor
             dev.decided_at = now

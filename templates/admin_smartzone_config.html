@@ -108,18 +108,82 @@ mail.google.com</pre>
   <div class="card">
     <div class="card-header"><h2>4. CoA (Change of Authorization)</h2></div>
     <div class="card-body">
-      <p class="muted">Configured implicitly; the portal sends Disconnect-
-      Messages to your SmartZone controller at:</p>
+      <p class="muted">The portal sends RFC 5176 Disconnect-Message packets
+      to your SmartZone controller so a freshly approved/denied client picks
+      up its new status on reassociation instead of waiting out its existing
+      session.</p>
       <dl class="kv">
         <dt>CoA Host</dt><dd><code>{{ coa_host or '(not set)' }}</code></dd>
         <dt>CoA Port</dt><dd><code>{{ coa_port }}</code></dd>
         <dt>CoA Secret</dt><dd>same as RADIUS shared secret (Ruckus convention)</dd>
       </dl>
+
+      <p style="margin-top:14px"><strong>SmartZone-side configuration</strong> —
+      on the <em>AAA Authentication Service</em> profile you created in step 1:</p>
+      <ul style="margin:6px 0 0;padding-left:22px">
+        <li>Enable <strong>Backup RADIUS</strong> &gt; <em>Enable Backup RADIUS support</em>
+            OFF (unless you have a real backup).</li>
+        <li>In <strong>RFC 5580 Out of Band Location Delivery</strong> leave defaults.</li>
+        <li>Make sure the WLAN's <em>RADIUS Options → NAS ID Type</em> is set so the
+            portal's <code>NAS-IP-Address</code> attribute matches what SmartZone
+            expects. The portal sends <code>NAS-IP-Address = {{ coa_host or '(coa_host)' }}</code>.</li>
+        <li>SmartZone listens for CoA on UDP <strong>3799</strong> on the
+            controller's <em>cluster control IP</em>, not the management IP.
+            <code>{{ coa_host or '(set COA_HOST)' }}</code> must be reachable on
+            that port from this appliance.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2>5. Service-user permissions</h2></div>
+    <div class="card-body">
+      <p>The SmartZone account in <code>SZ_USERNAME</code> needs permission to
+      <strong>disconnect clients</strong> via the Public API. Without it, the
+      portal's first-choice kick path returns <code>403 Permission denied
+      (Lack of admin privilege)</code> and falls back to CoA-RADIUS.</p>
+      <p class="muted">Administration &rarr; Admins and Roles &rarr; Administrators
+      &rarr; edit the service user. Assign a role with at least <em>Wireless LANs
+      → Modify</em> and <em>Clients → Manage / Disconnect</em>. The default
+      <code>Network Administrator</code> role covers this; a read-only
+      operator role does not.</p>
+      <p class="muted">Quick test from a shell on this box:</p>
+      <pre style="background:var(--surface-muted);padding:12px;border-radius:6px;font-size:0.85em;overflow:auto">curl -sk -X POST "https://&lt;sz-host&gt;:8443/wsg/api/public/v11_1/serviceTicket" \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"'"$SZ_USERNAME"'","password":"'"$SZ_PASSWORD"'"}'
+# Take the serviceTicket from the reply, then:
+curl -sk -X POST "https://&lt;sz-host&gt;:8443/wsg/api/public/v11_1/clients/disconnect?serviceTicket=&lt;ticket&gt;" \
+  -H 'Content-Type: application/json' \
+  -d '{"mac":"AA:BB:CC:DD:EE:FF","apMac":"&lt;ap-mac&gt;"}'</pre>
+      <p class="muted">A 200/204 means the role is right. A 403 with
+      <code>errorCode 211</code> means it isn't.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2>Troubleshooting</h2></div>
+    <div class="card-body">
+      <p><strong>Captive portal keeps reloading after I approve a device.</strong></p>
+      <p class="muted">The DB approval worked, but the running client session
+      wasn't kicked — so the device is still on its old (pending) session.
+      Either fix the service-user role (above) so the SmartZone API path
+      works, or get CoA-RADIUS working (check NAS IP, UDP 3799 reachability,
+      and that the shared secret matches what SmartZone has on its CoA
+      receiver). Until one of those paths succeeds, end users have to
+      disconnect from the Wi-Fi and rejoin to pick up the new status.</p>
+
+      <p style="margin-top:12px"><strong>CoA Disconnect timeout (no reply from {{ coa_host or '...' }}:{{ coa_port }}).</strong></p>
+      <p class="muted">SmartZone never sent an ACK/NAK. Common causes:
+      <em>(a)</em> <code>{{ coa_host }}</code> isn't actually a SmartZone CoA
+      listener (use the cluster-control IP, not the management IP);
+      <em>(b)</em> UDP 3799 is firewalled between this box and SmartZone;
+      <em>(c)</em> shared secret mismatch — fix it in the wizard or
+      <code>.env</code>.</p>
     </div>
   </div>
 
   <p class="muted" style="text-align:center;margin-top:18px;font-size:0.88em">
-    Need to change any of these? Click <strong>Re-run setup wizard</strong> on the Admins page.
+    Need to change any of these? Click <strong>Re-run setup wizard</strong> on the Settings page.
   </p>
 </div>
 

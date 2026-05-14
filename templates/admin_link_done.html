@@ -23,8 +23,21 @@
     {% else %}
       <p>{{ d.friendly_name or d.hostname or d.mac_display }}
       is now <strong>{{ d.status }}</strong>
-      {% if d.approved_until %}until {{ d.approved_until.strftime('%Y-%m-%d %H:%M UTC') }}{% endif %}.
-      The client has been kicked so the new status takes effect on reassociation.</p>
+      {% if d.approved_until %}until {{ d.approved_until.strftime('%Y-%m-%d %H:%M UTC') }}{% endif %}.</p>
+
+      {% if kicked %}
+        <div class="flash flash-success" style="margin-top:12px">
+          Client kicked via {{ kick_method }} — they'll reassociate and pick up
+          the new status.
+        </div>
+      {% else %}
+        <div class="flash flash-warning" style="margin-top:12px">
+          Status updated, but the client could NOT be kicked: {{ kick_detail }}.
+          The device will pick up the new status only after it manually
+          disconnects and reassociates. See the SmartZone page on the admin
+          site for troubleshooting.
+        </div>
+      {% endif %}
     {% endif %}
 
     <dl class="kv" style="margin-top:12px">

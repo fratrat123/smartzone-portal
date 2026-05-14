@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 from functools import wraps
 
-from flask import Blueprint, abort, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 from sqlalchemy import func, select
 
 from action_tokens import TokenError, parse_token
@@ -49,6 +49,61 @@ def _default_approval_seconds() -> int:
             return int(get_setting(s, "default_approval_seconds", "0"))
         except (ValueError, TypeError):
             return 0
+
+
+def _kick_client(mac: str, ap_mac: str | None) -> tuple[bool, str, str]:
+    """Try SmartZone Public API first, then CoA-Disconnect over RADIUS.
+
+    Returns (ok, method, detail). `method` is the path that ultimately succeeded
+    (or was attempted), `detail` is a short human-readable explanation for the
+    audit log / admin flash messages."""
+    # SmartZone API path: needs the AP MAC (learned from RADIUS Called-Station-Id).
+    if ap_mac:
+        try:
+            if sz_client.disconnect_client(mac, ap_mac):
+                return True, "sz_api", "ok"
+        except Exception as e:
+            log = logging.getLogger(__name__)
+            log.exception("sz_api disconnect crashed for %s", mac)
+            sz_detail = f"sz_api crashed: {e}"
+        else:
+            sz_detail = "sz_api rejected (check service-user role + Called-Station-Id=AP MAC)"
+    else:
+        sz_detail = "sz_api skipped (no AP MAC yet — device not seen on RADIUS)"
+
+    # CoA fallback over RADIUS UDP 3799.
+    try:
+        if coa_disconnect(mac):
+            return True, "coa_radius", "ok"
+        coa_detail = "coa_radius no-ack (CoA-NAK or timeout — check SmartZone NAS IP + CoA secret)"
+    except Exception as e:
+        log = logging.getLogger(__name__)
+        log.exception("coa_radius crashed for %s", mac)
+        coa_detail = f"coa_radius crashed: {e}"
+
+    return False, "none", f"{sz_detail}; {coa_detail}"
+
+
+def _flash_kick_result(action: str, ok: bool, method: str, detail: str) -> None:
+    """Flash a banner so the admin can see whether the kick worked.
+
+    On success the message is short. On failure it spells out *which* path
+    failed and what to check, because the SmartZone / CoA config is what
+    operators tweak when this goes wrong (admin-role permissions, AAA Auth
+    Service CoA flag, NAS IP)."""
+    verb = {"approve": "Approved", "deny": "Denied",
+            "ignore": "Ignored", "reset": "Reset"}.get(action, action.capitalize())
+    if ok:
+        flash(f"{verb}. Client kicked via {method} — they'll reassociate "
+              f"and pick up the new status.", "success")
+    else:
+        flash(
+            f"{verb}, but the client could NOT be kicked: {detail}. "
+            "The DB is updated; the device will pick up the new status only "
+            "after it manually disconnects and reassociates (or its session "
+            "naturally expires). See the SmartZone page for troubleshooting.",
+            "warning",
+        )
 
 
 def admin_required(view):
@@ -365,19 +420,15 @@ def device(mac):
                 # Deny     -> rejoin attempt is rejected, stays off the network
                 # Reset    -> falls back to captive portal (pending again)
                 #
-                # Try SmartZone Public API first (most reliable on Ruckus).
-                # If it fails (e.g. no AP MAC yet, or API error), fall back to
-                # RFC 5176 CoA-Disconnect over RADIUS.
+                # Capture the AP MAC before the session closes so the kick
+                # attempt below doesn't trigger a lazy reload on a detached row.
                 ap_mac = dev.first_seen_ap_mac
-                kicked = sz_client.disconnect_client(mac, ap_mac)
-                method = "sz_api"
-                if not kicked:
-                    kicked = coa_disconnect(mac)
-                    method = "coa_radius"
+                kicked, method, detail = _kick_client(mac, ap_mac)
                 with SessionLocal() as s2:
                     audit(s2, "kick_sent", mac=mac, actor=actor,
-                          details=f"method={method} ok={kicked} ap_mac={ap_mac}")
+                          details=f"method={method} ok={kicked} ap_mac={ap_mac} {detail}")
                     s2.commit()
+                _flash_kick_result(action, kicked, method, detail)
 
                 if action == "reset":
                     return redirect(url_for("admin.device", mac=mac))
@@ -460,14 +511,37 @@ def bulk():
             ap_macs_for_kick.append((mac, dev.first_seen_ap_mac))
         s.commit()
 
-    # Fire CoA kicks outside the DB session (network calls).
+    # Fire kicks outside the DB session (network calls). Tally results so the
+    # admin sees an aggregate banner instead of a wall of per-device flashes.
+    kicked_n = 0
+    failed: list[tuple[str, str]] = []  # (mac, detail)
     for mac, ap_mac in ap_macs_for_kick:
-        try:
-            ok = sz_client.disconnect_client(mac, ap_mac)
-            if not ok:
-                coa_disconnect(mac)
-        except Exception:
-            pass
+        ok, method, detail = _kick_client(mac, ap_mac)
+        if ok:
+            kicked_n += 1
+        else:
+            failed.append((mac, detail))
+        with SessionLocal() as s3:
+            audit(s3, "kick_sent", mac=mac, actor=actor,
+                  details=f"bulk method={method} ok={ok} ap_mac={ap_mac} {detail}")
+            s3.commit()
+
+    total = len(ap_macs_for_kick)
+    if action == "delete" or total == 0:
+        pass  # nothing to flash about kicks
+    elif not failed:
+        flash(f"{action.capitalize()}d {total} device(s); all clients kicked.", "success")
+    else:
+        # Pick one representative detail (they're usually the same root cause).
+        sample = failed[0][1]
+        flash(
+            f"{action.capitalize()}d {total} device(s); "
+            f"{kicked_n} kicked OK, {len(failed)} could NOT be kicked. "
+            f"Affected devices will pick up the new status only after they "
+            f"manually disconnect and reassociate. "
+            f"First failure: {sample}",
+            "warning",
+        )
 
     return redirect(url_for("admin.queue"))
 
@@ -735,14 +809,10 @@ def link_action(token: str):
         s.commit()
 
         ap_mac = dev.first_seen_ap_mac
-        kicked = sz_client.disconnect_client(mac, ap_mac)
-        method = "sz_api"
-        if not kicked:
-            kicked = coa_disconnect(mac)
-            method = "coa_radius"
+        kicked, method, detail = _kick_client(mac, ap_mac)
         with SessionLocal() as s2:
             audit(s2, "kick_sent", mac=mac, actor=recipient_email,
-                  details=f"method={method} ok={kicked} ap_mac={ap_mac} via=magic_link")
+                  details=f"method={method} ok={kicked} ap_mac={ap_mac} via=magic_link {detail}")
             s2.commit()
 
         return render_template(
@@ -750,6 +820,9 @@ def link_action(token: str):
             d=_view(dev),
             already=False,
             action_taken=action,
+            kicked=kicked,
+            kick_method=method,
+            kick_detail=detail,
         )
 
 

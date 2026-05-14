@@ -8,6 +8,15 @@
 </head>
 <body>
   {% block topbar %}{% endblock %}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flashes">
+        {% for category, msg in messages %}
+          <div class="flash flash-{{ category or 'info' }}">{{ msg }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
   {% block layout %}
     <main class="page-narrow">
       {% block content %}{% endblock %}

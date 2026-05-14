@@ -131,6 +131,21 @@ def _common_app() -> Flask:
             status="403", icon="🚫", title="Access denied",
             message="You don't have permission to view this page."), 403
 
+    @app.errorhandler(400)
+    def _bad_request(e):
+        # Most often this is the CSRF check. Show a useful message and
+        # offer a path forward (typically "go back, refresh, retry") instead
+        # of Flask's default generic 400 page.
+        msg = (e.description if hasattr(e, "description") else None) or \
+              "The request couldn't be processed."
+        hint = ""
+        if "csrf" in msg.lower():
+            hint = (" This usually means the page was open before you signed in, "
+                    "or the form is stale. Reload the page and try again.")
+        return render_template("error.html",
+            status="400", icon="⚠", title="Bad request",
+            message=msg + hint), 400
+
     @app.errorhandler(500)
     def _server_error(e):
         return render_template("error.html",

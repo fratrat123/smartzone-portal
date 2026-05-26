@@ -82,8 +82,16 @@ install -m 0644 "${APP_DIR}/deploy/issue.appliance" /etc/issue
 # Also overwrite issue.net (shown to telnet/ssh pre-auth on some configs)
 install -m 0644 "${APP_DIR}/deploy/issue.appliance" /etc/issue.net 2>/dev/null || true
 
-log "Resetting OS-level account password"
+log "Resetting OS-level account passwords"
+# Both the unprivileged 'portal' user (for SSH / console login) and root
+# (for su) are reset to a known default. Recipient is expected to change
+# both immediately on first boot — these are documented in the console
+# banner / handoff doc, not secrets.
 echo 'portal:portal' | chpasswd
+echo 'root:portal'   | chpasswd
+# Make sure root isn't locked — chpasswd on a locked account sets the
+# password but leaves the lock flag, so su still fails.
+passwd -u root >/dev/null 2>&1 || true
 # Clear lastlog timestamp so the new password isn't immediately stale.
 # (we're intentionally NOT forcing first-login password change — the
 # recipient is expected to use the web wizard, not the shell.)

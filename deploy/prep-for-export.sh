@@ -87,11 +87,21 @@ log "Resetting OS-level account passwords"
 # (for su) are reset to a known default. Recipient is expected to change
 # both immediately on first boot — these are documented in the console
 # banner / handoff doc, not secrets.
+#
+# Build-time note: depending on how the base image was installed, the
+# 'portal' OS user may not exist (install.sh only creates the
+# 'captive-portal' service user, which has nologin). Create it now with
+# sudo and a real shell so the recipient has a usable console login.
+if ! id -u portal >/dev/null 2>&1; then
+    log "  creating missing 'portal' OS user (sudo group, /bin/bash)"
+    useradd --create-home --shell /bin/bash --groups sudo portal
+fi
 echo 'portal:portal' | chpasswd
 echo 'root:portal'   | chpasswd
-# Make sure root isn't locked — chpasswd on a locked account sets the
-# password but leaves the lock flag, so su still fails.
-passwd -u root >/dev/null 2>&1 || true
+# Make sure neither account is locked — chpasswd on a locked account
+# sets the password but leaves the lock flag, so login still fails.
+passwd -u portal >/dev/null 2>&1 || true
+passwd -u root   >/dev/null 2>&1 || true
 # Clear lastlog timestamp so the new password isn't immediately stale.
 # (we're intentionally NOT forcing first-login password change — the
 # recipient is expected to use the web wizard, not the shell.)

@@ -22,7 +22,7 @@ from db import (Admin, AuditLog, Device, DeviceSsidSeen, ExtraNotifyRecipient,
 from device_types import DEVICE_TYPES_BY_KEY
 from macfmt import display_colon
 from oauth import (allowed_email_domains, current_user, domain_allowed,
-                   is_admin, is_bootstrap_admin)
+                   email_domains_state, is_admin, is_bootstrap_admin)
 from smartzone import sz_client
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -747,9 +747,15 @@ def settings():
     with SessionLocal() as s:
         default_approval = get_setting(s, "default_approval_seconds", "0")
         current_logo_url = get_setting(s, "portal_logo_url", "") or config.PORTAL_LOGO_URL or ""
-        # Show what's actually in the Setting so admins see whether they've
-        # customized it. Fall back to the .env default hint if unset.
-        current_email_domains = get_setting(s, "email_allowed_domains", "")
+
+    # Read the domain Setting outside the SessionLocal above because
+    # email_domains_state() opens its own — nested scoped-sessions would
+    # detach the ORM instances we already loaded (same trap as the device
+    # approve bug earlier). See oauth.email_domains_state docstring.
+    is_email_domains_set, email_domains_list = email_domains_state()
+    current_email_domains = ", ".join(email_domains_list) if is_email_domains_set else ""
+
+    with SessionLocal() as s:
         db_admins = s.scalars(
             select(Admin).order_by(Admin.added_at.desc())
         ).all()
@@ -786,6 +792,7 @@ def settings():
         domain=config.GOOGLE_HOSTED_DOMAIN,
         default_approval=int(default_approval),
         current_email_domains=current_email_domains,
+        is_email_domains_set=is_email_domains_set,
         env_hosted_domain=config.GOOGLE_HOSTED_DOMAIN,
         current_logo_url=current_logo_url,
         user=current_user(),

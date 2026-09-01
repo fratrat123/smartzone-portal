@@ -31,21 +31,42 @@ def init_oauth(app):
     )
 
 
+def email_domains_state() -> tuple[bool, list[str]]:
+    """Returns (is_explicitly_set, domains).
+
+    - is_explicitly_set: True iff the admin has saved this Setting at least
+      once, even to an empty value (which means "no restriction, allow any").
+    - domains: normalized list, possibly empty. Empty + is_explicitly_set →
+      no restriction. Empty + not is_explicitly_set → fall back to .env.
+
+    Row-existence check (not value-truthiness) is what makes "save empty to
+    allow any email" work — otherwise the empty string gets treated as
+    "never touched" and we bounce back to the .env default forever.
+
+    Wrapped in try/except so bootstrap mode (no DB / no tables) returns
+    (False, []) and callers fall back to .env or accept-any.
+    """
+    try:
+        from db import Setting, SessionLocal
+        with SessionLocal() as s:
+            row = s.get(Setting, "email_allowed_domains")
+        if row is None:
+            return False, []
+        value = row.value or ""
+        return True, [d.strip().lower() for d in value.split(",") if d.strip()]
+    except Exception:
+        return False, []
+
+
 def allowed_email_domains() -> list[str]:
     """Current allowed-domain list, lowercased. Empty = any domain allowed.
 
-    Priority: Setting table > .env GOOGLE_HOSTED_DOMAIN > any. Wrapped in
-    try/except so bootstrap mode (no DB) silently falls through to .env.
+    Priority: Setting (if explicitly saved, even to empty) > .env
+    GOOGLE_HOSTED_DOMAIN > any-domain-allowed.
     """
-    raw = ""
-    try:
-        from db import SessionLocal, get_setting
-        with SessionLocal() as s:
-            raw = get_setting(s, "email_allowed_domains", "")
-    except Exception:
-        pass
-    if raw:
-        return [d.strip().lower() for d in raw.split(",") if d.strip()]
+    is_set, domains = email_domains_state()
+    if is_set:
+        return domains
     if config.GOOGLE_HOSTED_DOMAIN:
         return [config.GOOGLE_HOSTED_DOMAIN.lower()]
     return []

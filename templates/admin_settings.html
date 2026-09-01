@@ -147,11 +147,16 @@
           <span class="hint">
             Comma-separated. Applies to the captive portal email flow, Google
             OAuth sign-in, and the &ldquo;Add admin&rdquo; form. Leave blank
-            to allow any email address.
-            {% if not current_email_domains and env_hosted_domain %}
+            and Save to allow any email address.
+            {% if is_email_domains_set and current_email_domains %}
+              <br>Currently restricted to: <code>{{ current_email_domains }}</code>.
+            {% elif is_email_domains_set %}
+              <br>Currently: <em>any email accepted</em> (no restriction &mdash; overrides <code>.env</code>).
+            {% elif env_hosted_domain %}
               <br>Currently using the <code>.env</code> default:
               <code>{{ env_hosted_domain }}</code>.
-            {% elif not current_email_domains %}
+              Save this field (empty or a list) to override.
+            {% else %}
               <br>Currently: <em>any email accepted</em> (no restriction).
             {% endif %}
           </span>

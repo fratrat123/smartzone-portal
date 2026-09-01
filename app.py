@@ -117,12 +117,16 @@ def _common_app() -> Flask:
         # Bootstrap mode hits the except — no DB, no tables — and just uses
         # the env value silently.
         logo_url = config.PORTAL_LOGO_URL
+        first_allowed_domain = config.GOOGLE_HOSTED_DOMAIN
         try:
             from db import SessionLocal, get_setting
             with SessionLocal() as s:
                 db_logo = get_setting(s, "portal_logo_url", "")
                 if db_logo:
                     logo_url = db_logo
+                db_domains = get_setting(s, "email_allowed_domains", "")
+                if db_domains:
+                    first_allowed_domain = db_domains.split(",")[0].strip()
         except Exception:
             pass
 
@@ -134,7 +138,7 @@ def _common_app() -> Flask:
             "logo_url": logo_url,
             "email_placeholder": (
                 config.PORTAL_EMAIL_PLACEHOLDER
-                or (f"you@{config.GOOGLE_HOSTED_DOMAIN}" if config.GOOGLE_HOSTED_DOMAIN
+                or (f"you@{first_allowed_domain}" if first_allowed_domain
                     else "you@example.com")
             ),
         }

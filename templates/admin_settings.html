@@ -28,8 +28,10 @@
           <label class="field" style="flex:1;margin-bottom:0">
             Email
             <input name="email" type="email" required
-                   placeholder="alice{% if domain %}@{{ domain }}{% endif %}"
-                   {% if domain %}pattern=".+@{{ domain }}"{% endif %}>
+                   placeholder="alice{% if domain %}@{{ domain }}{% endif %}">
+            {# No HTML5 pattern= — allowed domains are now a comma-separated
+               live Setting (see Defaults card). Server enforces via
+               domain_allowed(). #}
           </label>
           <label class="field" style="flex:1;margin-bottom:0">
             Note <span class="hint">(optional)</span>
@@ -117,7 +119,7 @@
       <span class="meta">Behavior tunables, live-editable</span>
     </div>
     <div class="card-body">
-      <form method="post">
+      <form method="post" style="margin-bottom:18px">
         {{ csrf_input }}
         <input type="hidden" name="action" value="set_default_approval">
         <label class="field">Default approval duration
@@ -128,6 +130,31 @@
             <option value="2592000" {% if default_approval == 2592000 %}selected{% endif %}>30 days</option>
           </select>
           <span class="hint">Pre-selected when an admin approves a device. Each approval can still pick a different duration on the spot.</span>
+        </label>
+        <button type="submit" class="btn">Save</button>
+      </form>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:18px 0">
+
+      <form method="post">
+        {{ csrf_input }}
+        <input type="hidden" name="action" value="set_email_domains">
+        <label class="field">Allowed email domains
+          <input name="email_domains" type="text"
+                 value="{{ current_email_domains }}"
+                 placeholder="{{ env_hosted_domain or 'hillmanschools.com, partnerschool.org' }}"
+                 autocapitalize="off" autocorrect="off" spellcheck="false">
+          <span class="hint">
+            Comma-separated. Applies to the captive portal email flow, Google
+            OAuth sign-in, and the &ldquo;Add admin&rdquo; form. Leave blank
+            to allow any email address.
+            {% if not current_email_domains and env_hosted_domain %}
+              <br>Currently using the <code>.env</code> default:
+              <code>{{ env_hosted_domain }}</code>.
+            {% elif not current_email_domains %}
+              <br>Currently: <em>any email accepted</em> (no restriction).
+            {% endif %}
+          </span>
         </label>
         <button type="submit" class="btn">Save</button>
       </form>

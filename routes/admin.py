@@ -21,7 +21,8 @@ from db import (Admin, AuditLog, Device, DeviceSsidSeen, ExtraNotifyRecipient,
                 SessionLocal, Setting, audit, get_setting, set_setting)
 from device_types import DEVICE_TYPES_BY_KEY
 from macfmt import display_colon
-from oauth import current_user, is_admin, is_bootstrap_admin
+from oauth import (allowed_email_domains, current_user, domain_allowed,
+                   is_admin, is_bootstrap_admin)
 from smartzone import sz_client
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -642,8 +643,10 @@ def settings():
             # actually works for the new admin.
             if not email or "@" not in email:
                 error = "Enter a valid email address."
-            elif config.GOOGLE_HOSTED_DOMAIN and not email.endswith("@" + config.GOOGLE_HOSTED_DOMAIN.lower()):
-                error = f"Email must be in @{config.GOOGLE_HOSTED_DOMAIN}."
+            elif not domain_allowed(email):
+                _doms = allowed_email_domains()
+                error = ("Email must be in @" + " or @".join(_doms)
+                         if _doms else "That email domain is not allowed.")
             elif is_bootstrap_admin(email):
                 error = "That email is already a bootstrap admin (set in .env)."
             else:
@@ -722,12 +725,31 @@ def settings():
         elif action == "remove_logo":
             _handle_logo_remove(actor)
 
+        elif action == "set_email_domains":
+            # Comma-separated list. Normalize: strip, lowercase, drop empties,
+            # drop leading @, dedup. Empty string means "any domain allowed".
+            raw = (request.form.get("email_domains") or "").strip()
+            seen = []
+            for part in raw.split(","):
+                d = part.strip().lower().lstrip("@")
+                if d and d not in seen:
+                    seen.append(d)
+            normalized = ", ".join(seen)
+            with SessionLocal() as s:
+                set_setting(s, "email_allowed_domains", normalized, actor=actor)
+                audit(s, "setting_update", actor=actor,
+                      details=f"email_allowed_domains={normalized or '<any>'}")
+                s.commit()
+
         if not error:
             return redirect(url_for("admin.settings"))
 
     with SessionLocal() as s:
         default_approval = get_setting(s, "default_approval_seconds", "0")
         current_logo_url = get_setting(s, "portal_logo_url", "") or config.PORTAL_LOGO_URL or ""
+        # Show what's actually in the Setting so admins see whether they've
+        # customized it. Fall back to the .env default hint if unset.
+        current_email_domains = get_setting(s, "email_allowed_domains", "")
         db_admins = s.scalars(
             select(Admin).order_by(Admin.added_at.desc())
         ).all()
@@ -763,6 +785,8 @@ def settings():
         notify_recipients=notify_view,
         domain=config.GOOGLE_HOSTED_DOMAIN,
         default_approval=int(default_approval),
+        current_email_domains=current_email_domains,
+        env_hosted_domain=config.GOOGLE_HOSTED_DOMAIN,
         current_logo_url=current_logo_url,
         user=current_user(),
         error=error,

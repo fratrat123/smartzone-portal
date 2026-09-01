@@ -26,7 +26,8 @@ from device_types import DEVICE_TYPES, DEVICE_TYPES_BY_KEY, infer_device_type
 from email_sender import send_verification_email
 from macfmt import canonical, display_colon
 from notifications import notify_new_pending
-from oauth import current_user, is_admin, oauth, verify_workspace
+from oauth import (allowed_email_domains, current_user, domain_allowed,
+                   is_admin, oauth, verify_workspace)
 import rate_limit
 from smartzone import sz_client
 
@@ -156,7 +157,12 @@ def oauth_login():
     # authorized list for the OAuth client. ProxyFix has already mapped any
     # X-Forwarded-Proto so url_for picks the right scheme.
     redirect_uri = url_for("portal.oauth_callback", _external=True)
-    return oauth.google.authorize_redirect(redirect_uri)
+    # `hd=` is a login-screen hint — only useful when exactly one domain is
+    # allowed. With multiple or none, we omit it and let Google show any
+    # account; verify_workspace() catches the wrong domain server-side.
+    domains = allowed_email_domains()
+    hd_hint = {"hd": domains[0]} if len(domains) == 1 else {}
+    return oauth.google.authorize_redirect(redirect_uri, **hd_hint)
 
 
 @bp.route("/oauth/callback")
@@ -204,9 +210,7 @@ _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 def _email_allowed(email: str) -> bool:
     if not _EMAIL_RE.match(email):
         return False
-    if config.GOOGLE_HOSTED_DOMAIN:
-        return email.lower().endswith("@" + config.GOOGLE_HOSTED_DOMAIN.lower())
-    return True
+    return domain_allowed(email)
 
 
 @bp.route("/portal/email/send", methods=["POST"])
@@ -218,9 +222,16 @@ def email_send():
 
     email = (request.form.get("email") or "").strip().lower()
     if not _email_allowed(email):
+        domains = allowed_email_domains()
+        if len(domains) == 1:
+            hint = f"a @{domains[0]}"
+        elif domains:
+            hint = "an allowed (@" + ", @".join(domains) + ")"
+        else:
+            hint = "a valid"
         return render_template(
             "portal_login.html",
-            error=f"Please use a {('@' + config.GOOGLE_HOSTED_DOMAIN) if config.GOOGLE_HOSTED_DOMAIN else 'valid'} email address.",
+            error=f"Please use {hint} email address.",
             prefill_email=email,
         )
 
@@ -310,6 +321,96 @@ def email_wait():
         error=error,
         expires_at=expires_at,
     )
+
+
+@bp.route("/portal/email/admin-assist", methods=["POST"])
+def email_admin_assist():
+    """User can't get to their email (iOS CNA popup closes on app-switch,
+    email is delayed, whatever) — let them punt to a human. This creates the
+    device row in the pending queue with the email they typed and fires the
+    same admin notification as a normal registration, without ever verifying
+    the email. Admin decides in-person whether to approve.
+
+    No visible "email not verified" flag on the queue row — the admin is the
+    gatekeeper here and is expected to know who they're approving. The audit
+    trail records the bypass separately (action=admin_assist_request)."""
+    ev_id = session.get("ev_id")
+    mac = session.get("pending_mac")
+    if not ev_id or not mac:
+        return redirect(url_for("portal.start"))
+
+    with SessionLocal() as s:
+        ev = s.get(EmailVerification, ev_id)
+        if not ev:
+            session.pop("ev_id", None)
+            return redirect(url_for("portal.start"))
+        email = ev.email
+        now = datetime.now(timezone.utc)
+
+        # Same effect as a completed portal.register submission: attach the
+        # email to the device row and re-open its pending state so the queue
+        # picks it up. Device type / friendly name are left blank — admin can
+        # fill those in from the detail page after approving.
+        dev = s.get(Device, mac)
+        if not dev:
+            dev = Device(mac=mac, status="pending")
+            s.add(dev)
+        elif dev.status in ("denied", "expired"):
+            dev.status = "pending"
+            dev.decided_by_email = None
+            dev.decided_at = None
+            dev.approved_until = None
+        # Don't touch approved / ignored — approved doesn't need re-queuing,
+        # ignored is intentional silence and shouldn't bubble back up.
+        if dev.status not in ("approved", "ignored"):
+            dev.requested_by_email = email
+            dev.requested_by_sub = f"email:{email}"
+            dev.requested_at = now
+            if not dev.hostname:
+                try:
+                    dev.hostname = sz_client.get_hostname(mac)
+                except Exception:
+                    pass
+
+        # Mark the EmailVerification as consumed so the polling loop / code
+        # entry stop showing it as pending; store a signal so the audit is
+        # accurate but the queue UI stays clean.
+        ev.verified_at = now
+        audit(s, "admin_assist_request", mac=mac,
+              actor=email,
+              details="user requested admin-assist bypass of email verification")
+        s.commit()
+
+        # Snapshot for the notification outside the session
+        friendly = dev.friendly_name
+        hostname = dev.hostname
+        device_type = dev.device_type
+        last_ssid = dev.last_seen_ssid or dev.first_seen_ssid
+        current_status = dev.status
+
+    # Sign the user in via session so /portal/pending shows the right state.
+    session["user"] = {
+        "email": email,
+        "sub": f"email:{email}",
+        "name": email.split("@", 1)[0],
+        "verified_via": "admin_assist",
+    }
+
+    # Only notify if the device actually landed in pending. If it was already
+    # approved / ignored, there's nothing for admins to act on.
+    if current_status == "pending":
+        notify_new_pending(
+            mac=mac,
+            mac_display=display_colon(mac),
+            requested_by_email=email,
+            friendly_name=friendly,
+            hostname=hostname,
+            device_type=(DEVICE_TYPES_BY_KEY.get(device_type, {}).get("label", device_type)
+                         if device_type else None),
+            ssid=last_ssid,
+        )
+
+    return redirect(url_for("portal.pending"))
 
 
 @bp.route("/portal/email/status")

@@ -1,6 +1,9 @@
 {% extends "setup_base.html" %}
 {% set s = state.get("tls", {}) %}
 {% set branding = state.get("branding", {}) %}
+{% set net = state.get("network", {}) %}
+{% set _portal_host = (branding.PORTAL_BASE_URL or '')|replace('https://', '')|replace('http://', '')|trim('/') %}
+{% set _appliance_ip = (net.NET_IP_CIDR or '').split('/')[0] %}
 
 {% block step_body %}
 <form id="step-form" method="post" class="card">
@@ -9,6 +12,27 @@
     <p>The portal handles its own TLS via Let's Encrypt with the
     <strong>DNS-01</strong> challenge through Cloudflare. This means the box
     never needs to be reachable on port 80 from the internet.</p>
+
+    <div class="notice notice-warning" style="margin:14px 0">
+      <strong>Before continuing — create a DNS A record.</strong>
+      <p style="margin:8px 0 0">
+        The portal hostname has to resolve to this appliance, or clients on
+        the school network won't be able to reach it and Let's Encrypt won't
+        be able to confirm the cert is yours. Create this record in whichever
+        DNS your client devices use (Cloudflare for public access, AD / on-prem
+        DNS for an internal-only setup — usually both):
+      </p>
+      <pre style="background:var(--surface-muted);padding:10px 12px;border-radius:6px;margin:10px 0 4px;font-size:0.92em;line-height:1.5">Type:   A
+Name:   {{ _portal_host or 'portal.example.org' }}
+Value:  {{ _appliance_ip or '<the appliance IP from the Network step>' }}
+TTL:    Auto (or 5 minutes while testing)
+Proxy:  Off  <span class="muted">(Cloudflare: "DNS only", gray cloud — orange cloud breaks RADIUS / WLAN traffic)</span></pre>
+      <p class="muted" style="margin:6px 0 0;font-size:0.9em">
+        The Cloudflare API token below is for cert <em>validation</em>
+        (DNS-01) — it does <em>not</em> create the A record above. That's a
+        separate one-time manual step.
+      </p>
+    </div>
 
     <details style="margin-bottom:14px">
       <summary style="cursor:pointer">How to create the Cloudflare API token</summary>

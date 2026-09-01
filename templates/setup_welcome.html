@@ -16,8 +16,13 @@
 
     <p>Before you start, have these ready:</p>
     <ul>
-      <li>The hostname you'll serve the portal on (e.g. <code>portal.example.org</code>)
-        and a DNS record pointing to this server.</li>
+      <li>The hostname you'll serve the portal on (e.g. <code>portal.example.org</code>).</li>
+      <li><strong>Access to your DNS</strong> — you'll need to create an
+        <code>A</code> record pointing that hostname at this appliance's IP.
+        The wizard will show the exact values to enter once you've picked the
+        appliance IP in the Network step. (This is separate from the
+        Cloudflare API token below, which is only used to <em>validate</em>
+        the cert at issue time, not to create the A record.)</li>
       <li>SMTP relay details (host, port, optional credentials).</li>
       <li>Google OAuth client ID + secret
         (<a href="https://console.cloud.google.com/apis/credentials" target="_blank">console.cloud.google.com</a>).</li>

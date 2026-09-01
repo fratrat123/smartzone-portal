@@ -31,6 +31,22 @@
         <span class="live-dot"></span>
         Waiting for the link to be clicked…
       </p>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:18px 0 14px">
+
+      <p class="muted" style="margin:0 0 8px;font-size:0.9em;text-align:center">
+        Can't get to your email right now?
+      </p>
+      <form method="post" action="{{ url_for('portal.email_admin_assist') }}">
+    {{ csrf_input }}
+        <button type="submit" class="btn btn-block"
+                style="background:var(--surface-muted)">
+          Ask IT to approve this device instead
+        </button>
+      </form>
+      <p class="muted" style="text-align:center;font-size:0.82em;margin:8px 0 0">
+        Notifies IT with your device details. They'll approve manually.
+      </p>
     </div>
   </div>
 

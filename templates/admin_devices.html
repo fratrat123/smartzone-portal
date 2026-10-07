@@ -69,6 +69,7 @@
                 <th>SSID</th>
                 <th>Requested</th>
                 <th>Expires</th>
+                <th>Approver</th>
                 <th></th>
               </tr>
             </thead>
@@ -90,6 +91,11 @@
                 <td>
                   {% if d.status == 'approved' and d.approved_until %}{{ d.approved_until.strftime('%Y-%m-%d %H:%M') }}
                   {% elif d.status == 'approved' %}forever
+                  {% else %}—{% endif %}
+                </td>
+                <td>
+                  {% if d.decided_by_email %}
+                    <span title="{{ d.decided_at.strftime('%Y-%m-%d %H:%M UTC') if d.decided_at else '' }}">{{ d.decided_by_email }}</span>
                   {% else %}—{% endif %}
                 </td>
                 <td class="actions">

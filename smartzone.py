@@ -88,6 +88,38 @@ class SmartZoneClient:
             return None
         return rec.get("hostname") or None
 
+    def lookup_client_by_ip(self, ip: str) -> dict[str, Any] | None:
+        """Look up an active client by IPv4 address. Used by the portal when
+        local ARP fails because the client is on a routed segment (not L2-
+        adjacent to the portal appliance).
+
+        SZ API filter type is "IP" on v11_x. Returns the first match or None.
+        """
+        body = {
+            "extraFilters": [
+                {"type": "IP", "value": ip, "operator": "eq"}
+            ],
+            "limit": 1,
+        }
+        try:
+            r = self._request("POST", "/query/client", json=body)
+            r.raise_for_status()
+            data = r.json()
+            items = data.get("list") or data.get("data") or []
+            return items[0] if items else None
+        except Exception:
+            log.exception("SmartZone lookup_client_by_ip failed for %s", ip)
+            return None
+
+    def mac_for_ip(self, ip: str) -> str | None:
+        """Return the client MAC for the given IP via SmartZone, or None.
+        Fallback for routed clients where portal-side ARP has no entry."""
+        rec = self.lookup_client_by_ip(ip)
+        if not rec:
+            return None
+        # SZ response field name varies by version — try the common ones.
+        return rec.get("clientMac") or rec.get("mac") or rec.get("ueMacAddress") or None
+
     def disconnect_client(self, mac: str, ap_mac: str | None) -> bool:
         """Force a client to disconnect via SmartZone Public API.
 

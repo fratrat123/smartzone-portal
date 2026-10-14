@@ -60,10 +60,14 @@ _CNA_UA = re.compile(r"CaptiveNetworkSupport", re.I)
 
 
 def _derive_client_mac() -> str | None:
-    """Determine the actual client MAC. ARP first, URL params as fallback."""
-    # ARP lookup of the client's source IP — most reliable.
+    """Determine the actual client MAC. Order:
+      1. Local ARP (fast, L2-adjacent clients)
+      2. SmartZone Public API lookup by IP (routed clients where ARP can't help)
+      3. URL params (rarely populated, kept as last resort)
+    """
     client_ip = request.remote_addr
     if client_ip:
+        # (1) ARP — works for clients in the appliance's own broadcast domain.
         mac = mac_for_ip(client_ip)
         if mac:
             try:
@@ -74,9 +78,30 @@ def _derive_client_mac() -> str | None:
             except ValueError:
                 pass
         else:
-            log.warning("portal: ARP lookup failed for client ip=%s", client_ip)
+            log.info("portal: ARP miss for ip=%s — falling back to SmartZone API",
+                     client_ip)
 
-    # Fallback: try URL params, skipping any "ENC..." encrypted values.
+        # (2) SmartZone API lookup by IP — handles the routed-subnet case
+        # (building-to-building fiber, L3 helper, multi-site, etc.) where
+        # the portal's ARP table only knows the gateway's MAC.
+        try:
+            sz_mac = sz_client.mac_for_ip(client_ip)
+        except Exception:
+            log.exception("portal: SmartZone IP lookup crashed for ip=%s", client_ip)
+            sz_mac = None
+        if sz_mac:
+            try:
+                resolved = canonical(sz_mac)
+                log.info("portal: resolved client MAC via SmartZone API: ip=%s mac=%s",
+                         client_ip, resolved)
+                return resolved
+            except ValueError:
+                pass
+        else:
+            log.warning("portal: no MAC for ip=%s (ARP + SmartZone both failed)",
+                        client_ip)
+
+    # (3) Fallback: URL params, skipping any "ENC..." encrypted values.
     for key in _MAC_PARAMS:
         v = request.args.get(key)
         if v and not v.upper().startswith("ENC"):

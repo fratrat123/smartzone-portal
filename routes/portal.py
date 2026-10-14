@@ -116,6 +116,7 @@ def _derive_client_mac() -> str | None:
 def landing():
     # Always re-derive on entry so stale session state from a prior client
     # can't make us reuse the wrong MAC.
+    log.info("portal: /portal landing (ip=%s)", request.remote_addr)
     mac = _derive_client_mac()
     if mac:
         session["pending_mac"] = mac
@@ -157,6 +158,17 @@ def landing():
 def start():
     mac = session.get("pending_mac")
     if not mac:
+        # Visibility: this fires whenever a client lands here with no MAC in
+        # session. The usual cause is SmartZone redirecting straight to
+        # /portal/start (instead of /portal), which skips _derive_client_mac()
+        # entirely. Logging the referer + UA + source IP so the diagnosis is
+        # obvious from the journal.
+        log.warning("portal: /portal/start hit with no pending_mac (ip=%s, "
+                    "referer=%s, ua=%s) — SmartZone probably redirected here "
+                    "instead of /portal",
+                    request.remote_addr,
+                    request.headers.get("Referer", "-"),
+                    request.headers.get("User-Agent", "-")[:80])
         return render_template("portal_no_mac.html"), 400
     # If the admin already denied this device, render the login page with
     # the denial state pre-loaded. The page's polling script catches

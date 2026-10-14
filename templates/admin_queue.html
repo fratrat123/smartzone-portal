@@ -83,7 +83,16 @@
   <div class="card">
     <div class="card-header">
       <h2>Pending <span class="pill pill-pending">{{ pending|length }}</span></h2>
-      <span class="meta">Sorted by newest first</span>
+      <span class="meta" style="display:flex;align-items:center;gap:12px">
+        <span>Sorted by newest first</span>
+        {% if pending %}
+          {# Button submits a sibling form defined just after the bulk form —
+             we can't nest a <form> inside the bulk form, so HTML5's form=
+             attribute lets a button attach to a form elsewhere in the DOM. #}
+          <button type="submit" form="clear-pending-form"
+                  class="btn btn-sm btn-danger">Clear all pending</button>
+        {% endif %}
+      </span>
     </div>
     <div class="card-body compact">
       {% if not pending %}
@@ -151,6 +160,17 @@
     </div>
   </div>
   </form>
+
+  {# Sibling form for the "Clear all pending" button in the card header above.
+     Lives outside the bulk form so it isn't a nested <form> (which browsers
+     silently drop). The button references it via form="clear-pending-form". #}
+  {% if pending %}
+    <form method="post" action="{{ url_for('admin.pending_clear') }}"
+          id="clear-pending-form"
+          onsubmit="return confirm('Delete ALL {{ pending|length }} pending device(s) from the queue? Audit log entries are kept, but device rows can\'t be undone.');">
+      {{ csrf_input }}
+    </form>
+  {% endif %}
 
   <script>
     (function () {

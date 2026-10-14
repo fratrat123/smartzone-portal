@@ -577,6 +577,50 @@ def bulk():
     return redirect(url_for("admin.queue"))
 
 
+@bp.route("/pending/clear", methods=["POST"])
+@admin_required
+def pending_clear():
+    """Delete every Device row currently in status=pending.
+
+    Intended for cleaning up the drive-by MAC noise that piles up over time
+    (devices that associated to the SSID once, hit RADIUS, got rejected,
+    were never followed through to email entry or admin-assist). No kick is
+    sent — these rows aren't tied to active SmartZone sessions in any
+    meaningful way; if any of them does reassociate later it'll just come
+    back in as a fresh pending row.
+
+    DeviceSsidSeen rows for the deleted MACs are cleaned up too. AuditLog
+    entries are left in place — they're historical and reference the MAC
+    by string, so they survive the device row going away.
+    """
+    actor = current_user()["email"]
+    deleted_macs: list[str] = []
+    with SessionLocal() as s:
+        pending_rows = s.scalars(
+            select(Device).where(Device.status == "pending")
+        ).all()
+        for dev in pending_rows:
+            deleted_macs.append(dev.mac)
+        if deleted_macs:
+            s.execute(
+                DeviceSsidSeen.__table__.delete()
+                .where(DeviceSsidSeen.mac.in_(deleted_macs))
+            )
+            for mac in deleted_macs:
+                s.delete(s.get(Device, mac))
+            audit(s, "pending_clear", actor=actor,
+                  details=f"deleted {len(deleted_macs)} pending device(s)")
+        s.commit()
+
+    n = len(deleted_macs)
+    if n:
+        flash(f"Cleared {n} pending device{'s' if n != 1 else ''} from the queue.",
+              "success")
+    else:
+        flash("Nothing to clear — no pending devices.", "info")
+    return redirect(url_for("admin.queue"))
+
+
 @bp.route("/audit")
 @admin_required
 def audit_view():
